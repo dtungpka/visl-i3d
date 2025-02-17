@@ -1,4 +1,4 @@
-# Multi-Models Project
+# ViSL
 
 This project is designed to provide a flexible and scalable framework for training and evaluating multiple deep learning models, including an I3D model. The structure of the project allows for easy addition of new models and datasets, making it suitable for various research and development purposes.
 
@@ -29,8 +29,8 @@ multi-models-project
 To set up the project, clone the repository and install the required dependencies:
 
 ```bash
-git clone <repository-url>
-cd multi-models-project
+git clone https://github.com/dtungpka/visl-i3d
+cd visl-i3d
 pip install -r requirements.txt
 ```
 
