@@ -75,8 +75,9 @@ class RgbOnlyDataset(Dataset):
 				self.all_video_paths.append(video_path)
 				self.all_labels.append(label)
 	
-		#batch data
+		#batch data while using dataloader
 		self.collate_fn = collate_fn 
+  
 	def __len__(self):
 		return len(self.all_video_paths)
 	def __getitem__(self, index):
@@ -85,13 +86,21 @@ class RgbOnlyDataset(Dataset):
 		label = self.all_labels[index]
 	
 		video_np = load_video(video_path)
+
 		video_tensor = torch.from_numpy(video_np).float()
+		# T,W,H,C -> C,T,W,H
+		video_tensor = video_tensor.permute(0,3,1,2)
+  
+		# Normalize to [0,1]
+		video_tensor = video_tensor / 255.0  
+  
 		label_tensor = F.one_hot(torch.tensor(label, dtype=torch.long), num_classes=self.num_classes) 
 
 		data_dir = {
 			'rgb_tensor': video_tensor,
 			'label_tensor':   label_tensor
 		}
+  
 		return data_dir
 				
 	
