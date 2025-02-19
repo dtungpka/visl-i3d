@@ -95,8 +95,11 @@ class Visl2Dataset(IterableDataset):
         return self.get_data(start, end)
 
     def get_data(self, start, end):
+        batch_data = []
+        batch_labels = []
+        
         for i in range(start, end):
-            label = self.labels[i]  # Label can be processed later as needed
+            label = self.labels[i]
             depth_fp = self.depth_files[i]
             rgb_fp = self.rgb_files[i]
             X = None
@@ -173,26 +176,34 @@ class Visl2Dataset(IterableDataset):
 
                 # Apply augmentation frame‐wise if an augmentation pipeline is defined.
                 if self.augmentation is not None and self.output in ['rgb', 'rgbd']:
-                    # Process each frame individually.
                     augmented_frames = []
                     for j in range(X.shape[0]):
-                        # For rgbd, split rgb and depth if necessary.
                         if self.output == 'rgbd':
-                            # Augment only the rgb channels (first three), then reattach the depth channel.
-                            rgb_frame = X[j, :3, :, :]
-                            # Convert to CHW numpy array to HWC for PIL.
-                            rgb_img = np.transpose(rgb_frame, (1, 2, 0)).astype(np.uint8)
+                            # Augment only the rgb channels (first three), then reattach the depth channel
+                            rgb_frame = X[j, :3]
+                            rgb_img = rgb_frame.astype(np.uint8)
+                            # Convert augmented tensor to numpy array
                             aug_rgb = self.augmentation(rgb_img)
-                            aug_rgb = aug_rgb.numpy()
-                            # Use the unaugmented depth (fourth channel).
-                            depth_channel = X[j, 3:, :, :]
-                            frame_aug = np.concatenate([aug_rgb, depth_channel], axis=0)
+                            if isinstance(aug_rgb, torch.Tensor):
+                                aug_rgb = aug_rgb.permute(1, 2, 0).numpy()
+                            elif isinstance(aug_rgb, Image.Image):
+                                aug_rgb = np.array(aug_rgb)
+                            # Use the unaugmented depth (fourth channel)
+                            depth_channel = X[j, 3:]
+                            frame_aug = np.concatenate([aug_rgb, depth_channel], axis=2)
                         else:
-                            # For rgb, simply augment.
-                            frame = np.transpose(X[j], (1, 2, 0)).astype(np.uint8)
-                            frame_aug = self.augmentation(frame).numpy()
+                            # For rgb, simply augment
+                            frame = X[j].astype(np.uint8)
+                            aug_frame = self.augmentation(frame)
+                            if isinstance(aug_frame, torch.Tensor):
+                                frame_aug = aug_frame.permute(1, 2, 0).numpy()
+                            elif isinstance(aug_frame, Image.Image):
+                                frame_aug = np.array(aug_frame)
                         augmented_frames.append(frame_aug)
-                    X = np.stack(augmented_frames, axis=1)  # (C, T, H, W)
+                    # Stack along time dimension
+                    X = np.stack(augmented_frames, axis=0)  # Change: Stack along time dimension first
+                    # Transpose to (C, T, H, W)
+                    X = np.transpose(X, (3, 0, 1, 2))
                 else:
                     # Transpose X to (C, T, H, W)
                     X = np.transpose(X, (3, 0, 1, 2))
@@ -201,30 +212,58 @@ class Visl2Dataset(IterableDataset):
                     np.save(cache_file, X)
 
             X_tensor = torch.FloatTensor(X)
-            # In this example the label is kept as a string.
-            yield X_tensor, label
+            batch_data.append(X_tensor)
+            batch_labels.append(label)
+
+            # Yield batch when accumulated batch_size samples
+            if len(batch_data) == self.batch_size:
+                # Stack tensors along batch dimension
+                batch_tensor = torch.stack(batch_data, dim=0)
+                yield batch_tensor, batch_labels
+                # Clear accumulators
+                batch_data = []
+                batch_labels = []
+
+        # Yield remaining samples if any
+        if batch_data:
+            batch_tensor = torch.stack(batch_data, dim=0)
+            yield batch_tensor, batch_labels
 
 if __name__ == "__main__":
-    # Example usage:
+    # Example usage with batch processing
     config = {
         'paths': {
-            'train_data_path': "path/to/visl2_dataset"  # change this to your dataset root folder
+            'train_data_path': "/work/21010294/ViSL-2/Processed"
         },
         'height': 224,
         'width': 224,
         'n_frames': 320,
-        'batch_size': 1,
+        'batch_size': 16,  # Smaller batch size for testing
         'output': 'rgb',
-        'cache_folder': "path/to/cache_folder",  # change this to your preferred cache folder (or None)
+        'cache_folder': "/work/21010294/ViSL-2/cache/",
         'person_selection': {
-            'mode': 'all'  # or 'list' or 'index'
+            'mode': 'all'
         },
         'augmentation': {
             'use_augmentation': True,
-            'augmentations': None  # Define your augmentation pipeline here
+            'augmentations': [
+                {
+                    'type': 'random_crop',
+                    'size': [224, 224],
+                    'scale': [0.8, 1.0]
+                },
+                {
+                    'type': 'random_flip',
+                    'horizontal': True,
+                    'vertical': False
+                }
+            ]
         }
     }
+    
     visl2_dataset = Visl2Dataset(config)
-    for data, label in visl2_dataset:
-        print("Data shape:", data.shape, "Label:", label)
+    for batch_data, batch_labels in visl2_dataset:
+        print("Batch shape:", batch_data.shape)
+        print("Batch labels:", batch_labels)
+        print("Number of samples in batch:", len(batch_labels))
         break
