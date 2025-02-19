@@ -179,18 +179,28 @@ class Visl2Dataset(IterableDataset):
                     augmented_frames = []
                     for j in range(X.shape[0]):
                         if self.output == 'rgbd':
-                            # Augment only the rgb channels (first three), then reattach the depth channel
-                            rgb_frame = X[j, :3]
+                            # Split RGB and depth channels
+                            rgb_frame = X[j, :3]  # Shape: (H, W, 3)
+                            depth_channel = X[j, 3]  # Shape: (H, W)
+                            
+                            # Convert to uint8 for augmentation
                             rgb_img = rgb_frame.astype(np.uint8)
-                            # Convert augmented tensor to numpy array
+                            
+                            # Apply augmentation to RGB
                             aug_rgb = self.augmentation(rgb_img)
+                            
+                            # Convert augmented RGB to numpy
                             if isinstance(aug_rgb, torch.Tensor):
-                                aug_rgb = aug_rgb.permute(1, 2, 0).numpy()
+                                aug_rgb = aug_rgb.permute(1, 2, 0).numpy()  # Shape: (H, W, 3)
                             elif isinstance(aug_rgb, Image.Image):
-                                aug_rgb = np.array(aug_rgb)
-                            # Use the unaugmented depth (fourth channel)
-                            depth_channel = X[j, 3:]
-                            frame_aug = np.concatenate([aug_rgb, depth_channel], axis=2)
+                                aug_rgb = np.array(aug_rgb)  # Shape: (H, W, 3)
+                            
+                            # Resize depth to match augmented RGB dimensions
+                            depth_resized = cv2.resize(depth_channel, (aug_rgb.shape[1], aug_rgb.shape[0]))  # Shape: (H, W)
+                            depth_resized = np.expand_dims(depth_resized, axis=-1)  # Shape: (H, W, 1)
+                             
+                            # Concatenate along channel dimension
+                            frame_aug = np.concatenate([aug_rgb, depth_resized], axis=-1)  # Shape: (H, W, 4)
                         else:
                             # For rgb, simply augment
                             frame = X[j].astype(np.uint8)
@@ -239,7 +249,7 @@ if __name__ == "__main__":
         'width': 224,
         'n_frames': 320,
         'batch_size': 16,  # Smaller batch size for testing
-        'output': 'rgb',
+        'output': 'rgbd',
         'cache_folder': "/work/21010294/ViSL-2/cache/",
         'person_selection': {
             'mode': 'all'
