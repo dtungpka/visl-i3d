@@ -22,7 +22,6 @@ def main():
     )
 
 
-
     # Train or evaluate based on config.
     if config.get('mode') == 'train':
         train_model(model, config)

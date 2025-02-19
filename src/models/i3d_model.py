@@ -171,12 +171,12 @@ class InceptionI3d(nn.Module):
 
     def train(self, config: dict):
         """Training logic implementation."""
-        optimizer = torch.optim.Adam(
+        self.optimizer = torch.optim.Adam(
             self.parameters(),
             lr=config['hyperparameters']['learning_rate'],
             weight_decay=config['hyperparameters']['weight_decay']
         )
-        criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.CrossEntropyLoss()
         
         self.train()  # Set model to training mode
         # Training loop implementation would go here
@@ -187,9 +187,9 @@ class InceptionI3d(nn.Module):
         dataset_config = config['dataset']['config']
         
         DatasetClass = DatasetRegistry.get_dataset(dataset_name)
-        dataset_train = DatasetClass(dataset_config, mode='train')
-        dataset_val = DatasetClass(dataset_config, mode='val')
-        dataset_test = DatasetClass(dataset_config, mode='test')
+        self.dataset_train = DatasetClass(dataset_config, mode='train')
+        self.dataset_val = DatasetClass(dataset_config, mode='val')
+        self.dataset_test = DatasetClass(dataset_config, mode='test')
         
     def evaluate(self, config: dict):
         """Evaluation logic implementation."""

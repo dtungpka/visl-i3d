@@ -1,4 +1,7 @@
+
+
 mode: "train"
+
 dataset: 
   name: "visl2"
   config:
