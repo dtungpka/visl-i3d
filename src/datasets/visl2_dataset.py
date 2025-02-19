@@ -29,7 +29,7 @@ class Visl2Dataset(IterableDataset):
         self.cache_folder = config.get('cache_folder')
         
         # Person selection configuration
-        self.person_selection = config['person_selection']
+        self.person_selection = config['person_selection'][mode]
         
         # Build complete person list
         self.all_persons = sorted([d for d in os.listdir(self.dataset_path) 

@@ -9,9 +9,18 @@ dataset:
     output: "rgb"
     cache_folder: null
     person_selection:
-      mode: "all"  # can be "all", "list", or "index"
-      persons: []  # list of person names if mode is "list"
-      indices: []  # list of indices if mode is "index"
+      train:
+        mode: "all"  # can be "all", "list", or "index"
+        persons: []  # list of person names if mode is "list"
+        indices: []  # list of indices if mode is "index"
+      val:
+        mode: "all"  # can be "all", "list", or "index"
+        persons: []  # list of person names if mode is "list"
+        indices: []  # list of indices if mode is "index"
+      test:
+        mode: "all"  # can be "all", "list", or "index"
+        persons: []  # list of person names if mode is "list"
+        indices: []  # list of indices if mode is "index"
     train_split: 0.7
     val_split: 0.1
     test_split: 0.2
