@@ -1,12 +1,13 @@
 import os
 import math
+import random
 import cv2
 import numpy as np
 import torch
 from torch.utils.data import IterableDataset
 from torchvision import transforms
 from PIL import Image
-from src.datasets.augmentation import get_augmentation_pipeline  # NEW import
+from src.datasets.augmentation import get_augmentation_pipeline
 
 # Global optical flow instance.
 optical_flow = cv2.optflow.createOptFlow_DualTVL1()
@@ -17,49 +18,80 @@ class Visl2Dataset(IterableDataset):
     Expects each batch folder to have 'depth' (.npy) and 'rgb' (.avi) subfolders.
     Supports output types: 'rgb', 'rgbd', and 'flow'.
     """
-    def __init__(self, dataset_path, height=224, width=224, n_frames=320, batch_size=1,
-                 output='rgb', cache_folder=None, apply_aug=False, aug_config=None):
-        self.dataset_path = dataset_path
-        self.height = height
-        self.width = width
-        self.n_frames = n_frames
-        self.batch_size = batch_size
-        self.output = output
-        self.cache_folder = cache_folder
-        self.apply_aug = apply_aug
+    def __init__(self, config,mode='train'):
+        self.config = config
+        self.dataset_path = config['paths'][f'{mode}_data_path']
+        self.height = config['height']
+        self.width = config['width']
+        self.n_frames = config['n_frames']
+        self.batch_size = config['batch_size']
+        self.output = config['output']
+        self.cache_folder = config.get('cache_folder')
+        
+        # Person selection configuration
+        self.person_selection = config['person_selection']
+        
+        # Build complete person list
+        self.all_persons = sorted([d for d in os.listdir(self.dataset_path) 
+                                 if os.path.isdir(os.path.join(self.dataset_path, d))])
+        
+        # Filter persons based on selection mode
+        self.selected_persons = self._filter_persons()
+        
+        # Build file lists for selected persons
+        self.depth_files, self.rgb_files, self.labels = self._build_file_lists()
+        
+        # Setup augmentation
+        aug_config = config.get('augmentation', {})
+        self.augmentation = get_augmentation_pipeline(
+            aug_config.get('augmentations'), 
+            self.output
+        ) if aug_config.get('use_augmentation', False) else None
 
-        # Build file lists by scanning each batch folder.
-        self.depth_files = []
-        self.rgb_files = []
-        self.labels = []
-        for batch in sorted(os.listdir(self.dataset_path)):
-            batch_path = os.path.join(self.dataset_path, batch)
-            depth_dir = os.path.join(batch_path, 'depth')
-            rgb_dir = os.path.join(batch_path, 'rgb')
+    def _filter_persons(self):
+        mode = self.person_selection['mode']
+        if mode == 'all':
+            return self.all_persons
+        elif mode == 'list':
+            person_list = self.person_selection['persons']
+            return [p for p in self.all_persons if p in person_list]
+        elif mode == 'index':
+            indices = self.person_selection['indices']
+            return [self.all_persons[i] for i in indices if i < len(self.all_persons)]
+        return self.all_persons
+
+    def _build_file_lists(self):
+        depth_files = []
+        rgb_files = []
+        labels = []
+        
+        for person in self.selected_persons:
+            person_path = os.path.join(self.dataset_path, person)
+            depth_dir = os.path.join(person_path, 'depth')
+            rgb_dir = os.path.join(person_path, 'rgb')
+            
             if os.path.isdir(depth_dir) and os.path.isdir(rgb_dir):
                 depth_list = sorted(os.listdir(depth_dir))
                 for file in depth_list:
                     depth_fp = os.path.join(depth_dir, file)
                     rgb_fp = os.path.join(rgb_dir, file.replace('.npy', '.avi'))
                     if os.path.exists(rgb_fp):
-                        self.depth_files.append(depth_fp)
-                        self.rgb_files.append(rgb_fp)
-                        self.labels.append(batch)
-        self.dataset_len = len(self.labels)
-
-        # Use the unified augmentation pipeline if apply_aug is True.
-        self.augmentation = get_augmentation_pipeline(aug_config, self.output) if self.apply_aug else None
+                        depth_files.append(depth_fp)
+                        rgb_files.append(rgb_fp)
+                        labels.append(person)
+        
+        return depth_files, rgb_files, labels
 
     def __iter__(self):
         worker_info = torch.utils.data.get_worker_info()
         start = 0
-        end = self.dataset_len
+        end = len(self.labels)
         if worker_info is not None:
             # For multi-worker settings, split the workload.
             per_worker = int(math.ceil((end - start) / float(worker_info.num_workers)))
             worker_id = worker_info.id
             start = start + worker_id * per_worker
-            end = min(start + per_worker, self.dataset_len)
+            end = min(start + per_worker, len(self.labels))
         return self.get_data(start, end)
 
     def get_data(self, start, end):
@@ -174,9 +206,25 @@ class Visl2Dataset(IterableDataset):
 
 if __name__ == "__main__":
     # Example usage:
-    dataset_path = "path/to/visl2_dataset"  # change this to your dataset root folder
-    cache_folder = "path/to/cache_folder"    # change this to your preferred cache folder (or None)
-    visl2_dataset = Visl2Dataset(dataset_path, apply_aug=True, cache_folder=cache_folder, output='rgb')
+    config = {
+        'paths': {
+            'train_data_path': "path/to/visl2_dataset"  # change this to your dataset root folder
+        },
+        'height': 224,
+        'width': 224,
+        'n_frames': 320,
+        'batch_size': 1,
+        'output': 'rgb',
+        'cache_folder': "path/to/cache_folder",  # change this to your preferred cache folder (or None)
+        'person_selection': {
+            'mode': 'all'  # or 'list' or 'index'
+        },
+        'augmentation': {
+            'use_augmentation': True,
+            'augmentations': None  # Define your augmentation pipeline here
+        }
+    }
+    visl2_dataset = Visl2Dataset(config)
     for data, label in visl2_dataset:
         print("Data shape:", data.shape, "Label:", label)
         break
