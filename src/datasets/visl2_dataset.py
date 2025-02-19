@@ -9,6 +9,10 @@ from torchvision import transforms
 from PIL import Image
 from src.datasets.augmentation import get_augmentation_pipeline
 
+import mediapipe as mp
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+
 # Global optical flow instance.
 optical_flow = cv2.optflow.createOptFlow_DualTVL1()
 
@@ -27,6 +31,19 @@ class Visl2Dataset(IterableDataset):
         self.batch_size = config['batch_size']
         self.output = config['output']
         self.cache_folder = config.get('cache_folder')
+
+
+        if self.output == 'skeleton':
+            HandLandmarker = mp.solutions.hands.Hands
+            self.hand_landmarker = HandLandmarker(static_image_mode=False,min_detection_confidence=0.5,min_tracking_confidence=0.5)
+
+            #Pose
+            PoseLandmarker = mp.solutions.pose.Pose
+            self.pose_landmarker = PoseLandmarker(static_image_mode=False,min_detection_confidence=0.5,min_tracking_confidence=0.5)
+
+
+
+
         
         # Person selection configuration
         self.person_selection = config['person_selection'][mode]
@@ -149,7 +166,7 @@ class Visl2Dataset(IterableDataset):
                             read_depth = read_depth[:rgb_frames.shape[0]]
                         X = np.concatenate([rgb_frames, read_depth], axis=-1)  # Combined along channel axis.
                 else:
-                    # For 'rgb' output, read the video (avi) file.
+                    # For 'rgb' or skeleton output, read the video (avi) file.
                     cap = cv2.VideoCapture(rgb_fp)
                     rgb_frames = []
                     while True:
@@ -160,8 +177,32 @@ class Visl2Dataset(IterableDataset):
                     cap.release()
                     X = np.array(rgb_frames)
 
+
+                #For skeleton output, use mediapipe to extract keypoints
+                if self.output == 'skeleton':
+                    #Extract pose and extract hand landmarks
+                    pose_frames = []
+                    hand_frames = []
+                    for frame in X:
+                        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        results = self.pose_landmarker.process(frame)
+                        pose_frames.append(results.pose_landmarks)
+                        results = self.hand_landmarker.process(frame)
+                        hand_frames.append(results.multi_hand_landmarks)
+                    #Convert to numpy and keep only keypoints_to_use
+                    pose_frames = np.array([[[landmark.x,landmark.y,landmark.z] for landmark in frame.landmark] for frame in pose_frames])
+                    hand_frames = np.array([[[landmark.x,landmark.y,landmark.z] for landmark in hand.landmark] for hand in hand_frames])
+                    X = np.concatenate([pose_frames,hand_frames],axis=-1)
+                    X = X.reshape(X.shape[0],-1)
+                    X = X.astype(np.float32)
+
+                    self.keypoints_to_use = config['keypoints_to_use'] #list of indices to keep
+                    X = X[:,self.keypoints_to_use]
+                    X = X.reshape(X.shape[0],-1)
+
+
                 # For non-flow outputs, resize and normalize the frames.
-                if self.output != 'flow':
+                elif self.output != 'flow':
                     X = X.astype(np.uint8)
                     X = np.array([cv2.resize(X[j], (self.width, self.height))
                                   for j in range(X.shape[0])]).astype(np.float32)
@@ -175,7 +216,7 @@ class Visl2Dataset(IterableDataset):
                     X = X[:self.n_frames]
 
                 # Apply augmentation frame‐wise if an augmentation pipeline is defined.
-                if self.augmentation is not None and self.output in ['rgb', 'rgbd']:
+                if self.augmentation is not None and self.output in ['rgb', 'rgbd', 'skeleton']:
                     augmented_frames = []
                     for j in range(X.shape[0]):
                         if self.output == 'rgbd':
@@ -201,7 +242,7 @@ class Visl2Dataset(IterableDataset):
                              
                             # Concatenate along channel dimension
                             frame_aug = np.concatenate([aug_rgb, depth_resized], axis=-1)  # Shape: (H, W, 4)
-                        else:
+                        elif self.output == 'rgb':
                             # For rgb, simply augment
                             frame = X[j].astype(np.uint8)
                             aug_frame = self.augmentation(frame)
@@ -209,6 +250,10 @@ class Visl2Dataset(IterableDataset):
                                 frame_aug = aug_frame.permute(1, 2, 0).numpy()
                             elif isinstance(aug_frame, Image.Image):
                                 frame_aug = np.array(aug_frame)
+                        elif self.output == 'skeleton':
+                            frame = X[j].astype(np.float32)
+                            frame_aug = self.augmentation(frame)
+                            
                         augmented_frames.append(frame_aug)
                     # Stack along time dimension
                     X = np.stack(augmented_frames, axis=0)  # Change: Stack along time dimension first
