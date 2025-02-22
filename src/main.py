@@ -1,12 +1,13 @@
 import os
 import yaml
-try:
-    from src.models import ModelRegistry, train_model, evaluate_model
-    # from src.utils import setup_logging
-except:
-    from models import ModelRegistry, train_model, evaluate_model
-    # from utils import setup_logging
+import sys
 
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.join(SCRIPT_DIR, ".."))  # Go one level up
+
+
+from models import ModelRegistry, train_model, evaluate_model
+    
 
 
 def load_config(config_path):

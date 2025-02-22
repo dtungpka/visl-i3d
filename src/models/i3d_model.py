@@ -1,11 +1,20 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from . import ModelRegistry
-try:
-    from src.datasets import DatasetRegistry
-except:
-    from datasets import DatasetRegistry
+import os
+import sys
+
+#import every where in the source
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.join(SCRIPT_DIR, ".."))  # Go one level up
+
+
+from models import ModelRegistry
+
+from datasets_folder import DatasetRegistry
+from models import ModelRegistry
+
+
     
 from tqdm import tqdm
 
@@ -198,6 +207,7 @@ class InceptionI3d(nn.Module):
             self.dataloader_dict[mode] = DatasetRegistry.get_dataloader(dataset_name = dataset_name,
                                                                   dataset_config = dataset_current_config,
                                                                   mode=mode)
+        print(F"Training on device: {self.device}")
         self.to(self.device)
         self.train_loop()
         
@@ -233,6 +243,8 @@ class InceptionI3d(nn.Module):
                             self.optimizer_step()
                             pbar.set_description_str(f"{epoch}/{total_epochs},Train Loss: {current_train_loss/num_mini_batches}")
                             current_train_loss = 0
+            
+            
                             
                             
     def forward_data(self):

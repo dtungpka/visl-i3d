@@ -1,5 +1,5 @@
 
-device: "cpu"
+device: "cuda:1"
 mode: "train"
 
 dataset:
@@ -12,7 +12,7 @@ dataset:
 
     dataloader_config: 
       
-      batch_size: 12
+      batch_size: 5
       shuffle: true
       drop_last: true
 
@@ -22,7 +22,7 @@ dataset:
     img_size: 224
 
     dataloader_config: 
-      batch_size: 12
+      batch_size: 5
       drop_last: true
      
 
@@ -32,7 +32,7 @@ dataset:
     img_size: 224
 
     dataloader_config: 
-      batch_size: 12
+      batch_size: 5
       drop_last: true
 
 

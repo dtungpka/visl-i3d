@@ -15,13 +15,10 @@ class DatasetRegistry:
         if key in cls._datasets:
             return cls._datasets[key]
         else:
-            # Assuming the module name is {name}_dataset and it exists in this package.
-            try:
-                module_name = f"src.datasets.{key}_dataset"
-                module = importlib.import_module(module_name)
-            except:
-                module_name = f"datasets.{key}_dataset"
-                module = importlib.import_module(module_name)
+            
+            module_name = f"datasets_folder.{key}_dataset"
+            module = importlib.import_module(module_name)
+            
             # Search for a class in the module with name starting with the dataset key (case-insensitive).
             for attr in dir(module):
                 obj = getattr(module, attr)
