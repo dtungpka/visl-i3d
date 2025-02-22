@@ -41,14 +41,14 @@ def collate_fn(batch):
 		return batch_data
 
 class RgbOnlyDataset(Dataset):
-	def __init__(self, config):
+	def __init__(self, config,mode):
 		
 		self.config = config
 		
-		if self.config['phase'] == 'train':
+		if mode == 'train':
 			# not implemented yet
 			self.transforms = None
-		elif self.config['phase'] == 'val':
+		elif mode in ['val','test']:
 			# not implemented yet
 			self.transforms = None
 		else:
@@ -73,10 +73,10 @@ class RgbOnlyDataset(Dataset):
 				video_path = os.path.join(rgb_path,file_name)
 				self.all_video_paths.append(video_path)
 				self.all_labels.append(label)
-	
+		self.mode = mode
 		#batch data while using dataloader
 		self.collate_fn = collate_fn 
-  
+		print(f"Phase {mode} totally has {len(self)} samples!")
 	def __len__(self):
 		return len(self.all_video_paths)
 	def __getitem__(self, index):

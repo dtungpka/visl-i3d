@@ -2,7 +2,10 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from . import ModelRegistry
-from src.datasets import DatasetRegistry
+try:
+    from src.datasets import DatasetRegistry
+except:
+    from datasets import DatasetRegistry
 
 class MaxPool3dSamePadding(nn.MaxPool3d):
     def compute_pad(self, dim, s):
@@ -176,21 +179,24 @@ class InceptionI3d(nn.Module):
             lr=config['hyperparameters']['learning_rate'],
             weight_decay=config['hyperparameters']['weight_decay']
         )
+        self.config = config
         self.criterion = nn.CrossEntropyLoss()
         
-        self.train()  # Set model to training mode
-        # Training loop implementation would go here
-        # You would need to implement the actual training loop using the config parameters
-
-            # Load dataset dynamically via DatasetRegistry.
         dataset_name = config['dataset']['name']
-        dataset_config = config['dataset']['config']
-        
         DatasetClass = DatasetRegistry.get_dataset(dataset_name)
-        self.dataset_train = DatasetClass(dataset_config, mode='train')
-        self.dataset_val = DatasetClass(dataset_config, mode='val')
-        self.dataset_test = DatasetClass(dataset_config, mode='test')
         
+       
+        self.dataloader_dict = {}
+        for phase in ['train', 'val', 'test']:
+            dataset_current_config = config['dataset'][phase]
+            # add extra model infor 
+            dataset_current_config = self.preprocessing_dataset_config(dataset_current_config)
+            #add dataloader
+            self.dataloader_dict = DatasetClass(dataset_current_config, mode=phase)
+        
+    def preprocessing_dataset_config(self,config):
+        config['num_classes']  = self.config['model']['num_classes']
+        return config
     def evaluate(self, config: dict):
         """Evaluation logic implementation."""
         self.eval()  # Set model to evaluation mode

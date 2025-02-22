@@ -3,9 +3,9 @@
 mode: "train"
 
 dataset:
+  name: 'RgbOnly'
   'train':
-    phase: 'train'
-    name: 'RgbOnlyDataset'
+    
     root_dir: '/work/21013187/SignLanguageRGBD/data/ver2_all_rgb_only'
     
     image_size: 80
@@ -16,8 +16,14 @@ dataset:
       drop_last: true
 
   'val':
-    name: 'RgbOnlyDataset'
-    phase: 'test'
+    root_dir: '/work/21013187/SignLanguageRGBD/data/ver2_all_rgb_only'
+    image_size: 80
+    loader_config: 
+      batch_size: 64
+      shuffle: true
+      drop_last: true
+  'test':
+    root_dir: '/work/21013187/SignLanguageRGBD/data/ver2_all_rgb_only'
     image_size: 80
     loader_config: 
       batch_size: 64

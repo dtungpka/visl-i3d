@@ -51,8 +51,9 @@ dataset:
       val_data_path: "path/to/val/data"
       test_data_path: "path/to/test/data"
 
-model_selection: "i3d"
+
 model:
+  model_name: "i3d"
   num_classes: 10
 hyperparameters:
   learning_rate: 0.001
