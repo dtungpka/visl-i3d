@@ -11,6 +11,7 @@ dataset:
     batch_size: 32
     output: "rgb"
     cache_folder: null
+    keypoints_to_use: [] # list of keypoints to use, if output is "skeleton"
     person_selection:
       train:
         mode: "all"  # can be "all", "list", or "index"

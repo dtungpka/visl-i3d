@@ -19,6 +19,10 @@ def get_augmentation_pipeline(aug_config=None, output_type='rgb'):
                 transforms.ToTensor(),
                 transforms.Normalize(mean=mean, std=std)
             ])
+        elif output_type == 'skeleton':
+            #Shape of skeleton data is (n_frames, n_joints, 2)\\
+
+            pass
         else:
             pipeline = None
         return pipeline
