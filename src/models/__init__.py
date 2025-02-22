@@ -32,7 +32,7 @@ def _load_models():
 
 def train_model(model: Any, config: dict):
     """Generic training function that delegates to model's train method"""
-    return model.train(config)
+    return model.train_model(config)
 
 def evaluate_model(model: Any, config: dict):
     """Generic evaluation function that delegates to model's evaluate method"""

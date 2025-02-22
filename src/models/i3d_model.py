@@ -6,6 +6,9 @@ try:
     from src.datasets import DatasetRegistry
 except:
     from datasets import DatasetRegistry
+    
+from tqdm import tqdm
+
 
 class MaxPool3dSamePadding(nn.MaxPool3d):
     def compute_pad(self, dim, s):
@@ -172,28 +175,41 @@ class InceptionI3d(nn.Module):
         
         return x
 
-    def train(self, config: dict):
+    def train_model(self, config: dict):
         """Training logic implementation."""
-        self.optimizer = torch.optim.Adam(
+        self.optimizer = torch.optim.AdamW(
             self.parameters(),
-            lr=config['hyperparameters']['learning_rate'],
-            weight_decay=config['hyperparameters']['weight_decay']
+            **config['optimizer_config']
         )
+        
         self.config = config
         self.criterion = nn.CrossEntropyLoss()
         
         dataset_name = config['dataset']['name']
-        DatasetClass = DatasetRegistry.get_dataset(dataset_name)
-        
        
         self.dataloader_dict = {}
-        for phase in ['train', 'val', 'test']:
-            dataset_current_config = config['dataset'][phase]
+        for mode in ['train', 'val', 'test']:
+            dataset_current_config = config['dataset'][mode]
             # add extra model infor 
             dataset_current_config = self.preprocessing_dataset_config(dataset_current_config)
             #add dataloader
-            self.dataloader_dict = DatasetClass(dataset_current_config, mode=phase)
+            self.dataloader_dict[mode] = DatasetRegistry.get_dataloader(dataset_name = dataset_name,
+                                                                  dataset_config = dataset_current_config,
+                                                                  mode=mode)
+        self.train_loop()
+    def train_loop(self):
         
+        """Training loop implementation."""
+        
+        self.train()  # Set model to training mode
+        total_epochs = self.config['hyperparameters']['num_epochs']
+        for epoch in range(self.config['hyperparameters']['num_epochs']):
+            for mode in ['train', 'val']:
+                pbar = tqdm(enumerate(self.dataloader_dict[mode]),total = len(self.dataloader_dict[mode]))
+                pbar.set_description_str(f"{epoch}/{total_epochs}")
+                for batch_idx, data in pbar:
+                    import pdb;pdb.set_trace()
+                    
     def preprocessing_dataset_config(self,config):
         config['num_classes']  = self.config['model']['num_classes']
         return config

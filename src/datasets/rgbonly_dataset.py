@@ -15,6 +15,8 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 from utils_folder.load_data import load_video
+from utils_folder.time_augumentation import AdjustNFrames
+from utils_folder.spatial_transforms import Resize
 
 #batch input 
 def collate_fn(batch):
@@ -26,9 +28,9 @@ def collate_fn(batch):
 			rgb_tensor = sample['rgb_tensor']
 			label_tensor = sample['label_tensor']
 
-			batch_rgb_tensor.append(rgb_tensor)
-			batch_label_tensor.append(label_tensor)
-
+			batch_rgb_tensor.append(rgb_tensor.unsqueeze(0))
+			batch_label_tensor.append(label_tensor.unsqueeze(0))
+		
 		#list to tensor B,N,C,W,H
 		batch_rgb_tensor = torch.cat(batch_rgb_tensor,dim = 0)
 		batch_label_tensor = torch.cat(batch_label_tensor,dim =0)
@@ -44,22 +46,27 @@ class RgbOnlyDataset(Dataset):
 	def __init__(self, config,mode):
 		
 		self.config = config
-		
-		if mode == 'train':
-			# not implemented yet
-			self.transforms = None
-		elif mode in ['val','test']:
-			# not implemented yet
-			self.transforms = None
-		else:
-			print(f"Phase {self.config['phase']} not found in ['tran','val]")
-			
 		self.root_dir = config['root_dir']
 		self.num_classes = config['num_classes']
+		self.n_frames = config['num_frames']
+		self.img_size = config['img_size']
   
+		self.array_video_transforms = [
+				AdjustNFrames(self.n_frames),
+				Resize(self.img_size)
+			]
+  
+		if mode == 'train':
+			pass
+		elif mode in ['val','test']:
+			pass
+		else:
+			print(f"Phase {self.config['phase']} not found in ['tran','val]")
+		
+		
 		self.all_video_paths = []
 		self.all_labels = []
-  
+
 		for folder_name in os.listdir(self.root_dir):
 			#folder_name strure AnPm --> n is class index
 			label = folder_name.split('P')[0][1:]
@@ -85,11 +92,15 @@ class RgbOnlyDataset(Dataset):
 		label = self.all_labels[index]
 	
 		video_np = load_video(video_path)
-
+  
+		for numpy_video_transform in self.array_video_transforms:
+			video_np = numpy_video_transform(video_np)
+  
 		video_tensor = torch.from_numpy(video_np).float()
+		
 		# T,W,H,C -> C,T,W,H
 		video_tensor = video_tensor.permute(0,3,1,2)
-  
+
 		# Normalize to [0,1]
 		video_tensor = video_tensor / 255.0  
   
