@@ -54,11 +54,11 @@ class InceptionModule(nn.Module):
         self.branch1x1 = Unit3D(in_channels, out_channels[0], kernel_shape=(1, 1, 1), stride=(1, 1, 1))
         self.branch5x5 = nn.Sequential(
             Unit3D(in_channels, out_channels[1], kernel_shape=(1, 1, 1)),
-            Unit3D(out_channels[1], out_channels[2], kernel_shape=(5, 5, 5))
+            Unit3D(out_channels[1], out_channels[2], kernel_shape=(5, 5, 5),padding='same')
         )
         self.branch3x3 = nn.Sequential(
             Unit3D(in_channels, out_channels[3], kernel_shape=(1, 1, 1)),
-            Unit3D(out_channels[3], out_channels[4], kernel_shape=(3, 3, 3))
+            Unit3D(out_channels[3], out_channels[4], kernel_shape=(3, 3, 3),padding='same')
         )
         self.branch_pool = nn.Sequential(
             MaxPool3dSamePadding(kernel_size=(3, 3, 3), stride=(1, 1, 1)),
@@ -143,6 +143,7 @@ class InceptionI3d(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
+      
         """Forward pass through the network."""
         # Conv block 1
         x = self.conv3d_1a_7x7(x)
@@ -176,7 +177,7 @@ class InceptionI3d(nn.Module):
         return x
 
     def train_model(self, config: dict):
-        """Training logic implementation."""
+        
         self.optimizer = torch.optim.AdamW(
             self.parameters(),
             **config['optimizer_config']
@@ -184,6 +185,7 @@ class InceptionI3d(nn.Module):
         
         self.config = config
         self.criterion = nn.CrossEntropyLoss()
+        self.device = self.config['device']
         
         dataset_name = config['dataset']['name']
        
@@ -196,20 +198,55 @@ class InceptionI3d(nn.Module):
             self.dataloader_dict[mode] = DatasetRegistry.get_dataloader(dataset_name = dataset_name,
                                                                   dataset_config = dataset_current_config,
                                                                   mode=mode)
+        self.to(self.device)
         self.train_loop()
+        
     def train_loop(self):
         
         """Training loop implementation."""
         
         self.train()  # Set model to training mode
         total_epochs = self.config['hyperparameters']['num_epochs']
-        for epoch in range(self.config['hyperparameters']['num_epochs']):
+        num_mini_batches = self.config['hyperparameters']['num_mini_batchs']
+        
+        for epoch in range(total_epochs):
+            
             for mode in ['train', 'val']:
+                
                 pbar = tqdm(enumerate(self.dataloader_dict[mode]),total = len(self.dataloader_dict[mode]))
                 pbar.set_description_str(f"{epoch}/{total_epochs}")
-                for batch_idx, data in pbar:
-                    import pdb;pdb.set_trace()
+                
+                if mode == 'train':
                     
+                    current_train_loss = 0
+                    
+                    for batch_idx, data in pbar:
+                        
+                        self.fetch_data(data)
+                        self.forward_data()
+                        self.backward_data()
+                        
+                        current_train_loss += self.loss.item()
+                        
+                        #update weights after n mini batches 
+                        if (batch_idx + 1) % num_mini_batches == 0:
+                            self.optimizer_step()
+                            pbar.set_description_str(f"{epoch}/{total_epochs},Train Loss: {current_train_loss/num_mini_batches}")
+                            current_train_loss = 0
+                            
+                            
+    def forward_data(self):
+        self.outputs = self.forward(self.X)
+    def backward_data(self):
+        self.loss = self.criterion(self.outputs, self.label)
+        self.loss.backward()
+    def optimizer_step(self):
+        self.optimizer.step()
+        self.optimizer.zero_grad()
+    def fetch_data(self,data):
+        self.X = data['batch_rgb'].to(self.device)
+        self.label = data['batch_label'].to(self.device)
+        
     def preprocessing_dataset_config(self,config):
         config['num_classes']  = self.config['model']['num_classes']
         return config

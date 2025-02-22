@@ -1,6 +1,7 @@
 
 
 import cv2
+import numpy as np
 
 class Resize:
 	def __init__(self, size):
@@ -19,4 +20,4 @@ class Resize:
 		for frame in X:
 			new_video.append( cv2.resize(frame, self.size))
 			
-		return X
+		return np.stack(new_video,axis=0)

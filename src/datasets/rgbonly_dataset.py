@@ -2,13 +2,11 @@
 
 
 import os
-import cv2
-import numpy as np
 import torch
 from torch.utils.data import Dataset
 from os.path import join
 import sys
-from torch.nn import functional as F
+
 
 #import every where in the source
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -17,6 +15,7 @@ sys.path.append(os.path.dirname(SCRIPT_DIR))
 from utils_folder.load_data import load_video
 from utils_folder.time_augumentation import AdjustNFrames
 from utils_folder.spatial_transforms import Resize
+from utils_folder import ToTensor,OneHotConvert
 
 #batch input 
 def collate_fn(batch):
@@ -31,13 +30,13 @@ def collate_fn(batch):
 			batch_rgb_tensor.append(rgb_tensor.unsqueeze(0))
 			batch_label_tensor.append(label_tensor.unsqueeze(0))
 		
-		#list to tensor B,N,C,W,H
+		#list to tensor B,C,T,W,H
 		batch_rgb_tensor = torch.cat(batch_rgb_tensor,dim = 0)
 		batch_label_tensor = torch.cat(batch_label_tensor,dim =0)
   
 		batch_data  = {
 			'batch_rgb': batch_rgb_tensor,
-			'label_rgb': batch_label_tensor
+			'batch_label': batch_label_tensor
 		}
   
 		return batch_data
@@ -53,7 +52,10 @@ class RgbOnlyDataset(Dataset):
   
 		self.array_video_transforms = [
 				AdjustNFrames(self.n_frames),
-				Resize(self.img_size)
+				#cv2 resize
+				Resize(self.img_size),
+				#convert numpy arrays [0-255] T,H,W,C to tensor [0-1] with shape C,T,H,W
+				ToTensor()
 			]
   
 		if mode == 'train':
@@ -80,6 +82,7 @@ class RgbOnlyDataset(Dataset):
 				video_path = os.path.join(rgb_path,file_name)
 				self.all_video_paths.append(video_path)
 				self.all_labels.append(label)
+    
 		self.mode = mode
 		#batch data while using dataloader
 		self.collate_fn = collate_fn 
@@ -91,23 +94,16 @@ class RgbOnlyDataset(Dataset):
 		video_path = self.all_video_paths[index]
 		label = self.all_labels[index]
 	
-		video_np = load_video(video_path)
+		rgb_data = load_video(video_path)
   
 		for numpy_video_transform in self.array_video_transforms:
-			video_np = numpy_video_transform(video_np)
+			rgb_data = numpy_video_transform(rgb_data)
   
-		video_tensor = torch.from_numpy(video_np).float()
-		
-		# T,W,H,C -> C,T,W,H
-		video_tensor = video_tensor.permute(0,3,1,2)
-
-		# Normalize to [0,1]
-		video_tensor = video_tensor / 255.0  
-  
-		label_tensor = F.one_hot(torch.tensor(label, dtype=torch.long), num_classes=self.num_classes) 
+		# label : int -> tensor num_classes [0,1,0,0,0,...,0]
+		label_tensor = OneHotConvert(label,num_classes = self.num_classes)
 
 		data_dir = {
-			'rgb_tensor': video_tensor,
+			'rgb_tensor': rgb_data,
 			'label_tensor':   label_tensor
 		}
   

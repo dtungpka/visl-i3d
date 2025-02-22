@@ -1,5 +1,5 @@
 
-
+device: "cpu"
 mode: "train"
 
 dataset:
@@ -7,7 +7,7 @@ dataset:
   'train':
     
     root_dir: '/work/21013187/SignLanguageRGBD/data/ver2_all_rgb_only'
-    num_frames: 36
+    num_frames: 72
     img_size: 224
 
     dataloader_config: 
@@ -18,7 +18,7 @@ dataset:
 
   'val':
     root_dir: '/work/21013187/SignLanguageRGBD/data/ver2_all_rgb_only'
-    num_frames: 36
+    num_frames: 72
     img_size: 224
 
     dataloader_config: 
@@ -28,9 +28,9 @@ dataset:
 
   'test':
     root_dir: '/work/21013187/SignLanguageRGBD/data/ver2_all_rgb_only'
-    num_frames: 36
+    num_frames: 72
     img_size: 224
-    
+
     dataloader_config: 
       batch_size: 12
       drop_last: true
@@ -46,3 +46,5 @@ optimizer_config:
 
 hyperparameters:
   num_epochs: 100
+  # batch update = num_mini_batchs * mini_batch_size
+  num_mini_batchs: 5
