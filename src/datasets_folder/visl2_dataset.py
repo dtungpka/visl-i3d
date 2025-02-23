@@ -8,9 +8,9 @@ from torch.utils.data import IterableDataset
 from torchvision import transforms
 from PIL import Image
 try:
-    from src.datasets.augmentation import get_augmentation_pipeline
+    from src.datasets_folder.augmentation import SkeletonAugmentation, RGBDAugmentation
 except:
-    from datasets.augmentation import get_augmentation_pipeline
+    from datasets_folder.augmentation import SkeletonAugmentation, RGBDAugmentation
 
 import mediapipe as mp
 from mediapipe.tasks import python
@@ -59,10 +59,15 @@ class Visl2Dataset(IterableDataset):
         
         # Setup augmentation
         aug_config = config.get('augmentation', {})
-        self.augmentation = RGBDAugmentation(
-            aug_config.get('augmentation'), 
-            self.output
-        ) if aug_config.get('use_augmentation', False) else None
+        self.augmentation = None
+        if aug_config.get('use_augmentation', False):
+            if self.output == 'skeleton':
+                self.augmentation = SkeletonAugmentation(
+                    aug_config.get('augmentations'))
+            elif self.output in ['rgb', 'rgbd', 'flow']:
+                self.augmentation = RGBDAugmentation(
+                    aug_config.get('augmentation'), 
+                    self.output,(config.get('width'),config.get('height'))) 
 
     def _filter_persons(self):
         mode = self.person_selection['mode']
@@ -190,14 +195,34 @@ class Visl2Dataset(IterableDataset):
                         hand_frames.append(results.multi_hand_landmarks)
                     #Convert to numpy and keep only keypoints_to_use
                     pose_frames = np.array([[[landmark.x,landmark.y,landmark.z] for landmark in frame.landmark] for frame in pose_frames])
-                    hand_frames = np.array([[[landmark.x,landmark.y,landmark.z] for landmark in hand.landmark] for hand in hand_frames])
-                    X = np.concatenate([pose_frames,hand_frames],axis=-1)
-                    X = X.reshape(X.shape[0],-1)
+                    # Process hand landmarks, accounting for both hands
+                    hand_frames_processed = []
+                    for frame_hands in hand_frames:
+                        if frame_hands is None or len(frame_hands) == 0:
+                            # If no hands detected, use zeros 
+                            frame_data = np.zeros((42, 3))  # 21 landmarks * 2 hands flattened
+                        else:
+                            # Process up to 2 hands
+                            frame_data = np.zeros((42, 3))  # 21 landmarks * 2 hands flattened
+                            for i, hand in enumerate(frame_hands[:2]):  # Only take first two hands if more are detected
+                                landmarks = np.array([[landmark.x, landmark.y, landmark.z] for landmark in hand.landmark])
+                                frame_data[i*21:(i+1)*21] = landmarks
+                        hand_frames_processed.append(frame_data)
+                    hand_frames = np.array(hand_frames_processed)
+                    X = np.concatenate([pose_frames,hand_frames],axis=1)
+                    #X = X.reshape(X.shape[0],-1)
                     X = X.astype(np.float32)
 
-                    self.keypoints_to_use = config['keypoints_to_use'] #list of indices to keep
-                    X = X[:,self.keypoints_to_use]
-                    X = X.reshape(X.shape[0],-1)
+                    
+                    #if keypoints_to_use is defined, keep only those keypoints, otherwise keep all
+                    if config.get('keypoints_to_use', None):
+                        self.keypoints_to_use = config['keypoints_to_use']
+                        X = X[:,self.keypoints_to_use]
+                    
+                    
+                    
+                    
+                    #X = X.reshape(X.shape[0],-1)
 
 
                 # For non-flow outputs, resize and normalize the frames.
@@ -208,32 +233,45 @@ class Visl2Dataset(IterableDataset):
                     # Normalize to [-1, 1]
                     X = (X - np.min(X)) / (np.max(X) - np.min(X)) * 2.0 - 1.0
 
-                # Adjust length to match desired n_frames.
+                # add padding if necessary
                 if X.shape[0] < self.n_frames:
-                    X = np.tile(X, (self.n_frames // X.shape[0] + 1, 1, 1, 1))
+                    n_pad = self.n_frames - X.shape[0]
+                    pad = np.zeros((n_pad, self.height, self.width, X.shape[-1]), dtype=X.dtype)
+                    X = np.concatenate([X, pad], axis=0)
+                    
                 if X.shape[0] > self.n_frames:
                     X = X[:self.n_frames]
-
-                # Apply augmentation frame‐wise if an augmentation pipeline is defined.
-                if self.augmentation is not None:
-                    # Shuffle augmentation parameters once per sequence
-                    frame_size = (self.height, self.width)
-                    self.augmentation.shuffle(frame_size)
                     
-                    augmented_frames = []
-                    for j in range(X.shape[0]):
-                        frame_aug = self.augmentation.apply(X[j])
-                        augmented_frames.append(frame_aug)
-                    
-                    X = np.stack(augmented_frames, axis=0)
-                    if self.output != 'skeleton':
-                        X = np.transpose(X, (3, 0, 1, 2))
-                else:
-                    # Transpose X to (C, T, H, W)
-                    X = np.transpose(X, (3, 0, 1, 2))
-
                 if self.cache_folder:
-                    np.save(cache_file, X)
+                        np.save(cache_file, X)
+
+            # Apply augmentation if an augmentation pipeline is defined
+            if self.augmentation is not None:
+                # Shuffle augmentation parameters once per sequence
+                frame_size = (self.height, self.width)
+                self.augmentation.shuffle(frame_size)
+                
+                # Apply augmentations to all frames at once
+                X = self.augmentation.apply(X)
+                
+            if self.output != 'skeleton':
+                X = np.transpose(X, (3, 0, 1, 2))
+            #re-check the shape if the time is the same
+            
+            if X.shape[0] > self.n_frames:
+                X = X[:self.n_frames]
+            elif X.shape[0] < self.n_frames:
+                n_pad = self.n_frames - X.shape[0]
+                if self.output == 'skeleton':
+                    pad = np.zeros((n_pad, X.shape[1], X.shape[2]), dtype=X.dtype)
+                else:
+                    pad = np.zeros((n_pad, self.height, self.width, X.shape[-1]), dtype=X.dtype)
+                X = np.concatenate([X, pad], axis=0)
+                
+           
+            
+        
+                
 
             X_tensor = torch.FloatTensor(X)
             batch_data.append(X_tensor)
@@ -261,27 +299,46 @@ if __name__ == "__main__":
         },
         'height': 224,
         'width': 224,
-        'n_frames': 320,
+        'n_frames': 32,
         'batch_size': 16,  
-        'output': 'rgbd',
+        'output': 'skeleton',
         'cache_folder': "/work/21010294/ViSL-2/cache/",
         'person_selection': {
-            'mode': 'all'
+            'train': {
+                'mode': 'all'
+            },
         },
         'augmentation': {
             'use_augmentation': True,
-            'augmentations': [
-                {
-                    'type': 'random_crop',
-                    'size': [224, 224],
-                    'scale': [0.8, 1.0]
-                },
-                {
-                    'type': 'random_flip',
-                    'horizontal': True,
-                    'vertical': False
+            'augmentations':{
+                    'temporal': {
+                        'frame_skip_range': (1, 3),        # Skip 1-3 frames
+                        'frame_duplicate_prob': 0.2,        # 20% chance to duplicate a frame
+                        'temporal_crop_scale': (0.8, 1.0),  # Temporal crop ratio
+                        'min_frames': 32                    # Minimum frames to keep
+                    },
+                    'spatial': {
+                        # For skeleton
+                        'rotation_range': (-13, 13),
+                        'squeeze_range': (0, 0.15),
+                        'perspective_ratio_range': (0, 1),
+                        'joint_rotation_prob': 0.3,
+                        'joint_rotation_range': (-4, 4),
+                        
+                        # For RGB/RGBD
+                        'flip_h_prob': 0.5,
+                        'flip_v_prob': 0.0,
+                        'brightness_range': (-0.2, 0.2),
+                        'contrast_range': (-0.2, 0.2),
+                        'saturation_range': (-0.2, 0.2),
+                        'hue_range': (-0.1, 0.1),
+                        'spatial_crop_scale': (0.8, 1.0),
+                        'normalize': {
+                            'mean': [0.485, 0.456, 0.406],
+                            'std': [0.229, 0.224, 0.225]
+                        }
+                    }
                 }
-            ]
         }
     }
     
