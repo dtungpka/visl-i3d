@@ -174,6 +174,7 @@ class SPOTER(nn.Module):
         inputs,labels = batch
         inputs = inputs.to(self.device)
         labels = labels.to(self.device)
+                           
         return inputs, labels
 
     def _preprocess_dataset_config(self, config):

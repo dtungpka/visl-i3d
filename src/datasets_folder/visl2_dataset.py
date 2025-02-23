@@ -306,6 +306,7 @@ class Visl2Dataset(IterableDataset):
             if len(batch_data) == self.batch_size:
                 # Stack tensors along batch dimension
                 batch_tensor = torch.stack(batch_data, dim=0)
+                batch_labels = torch.stack(batch_labels, dim=0)
                 yield batch_tensor, batch_labels
                 # Clear accumulators
                 batch_data = []
@@ -314,7 +315,9 @@ class Visl2Dataset(IterableDataset):
         # Yield remaining samples if any
         if batch_data:
             batch_tensor = torch.stack(batch_data, dim=0)
+            batch_labels = torch.stack(batch_labels, dim=0)
             yield batch_tensor, batch_labels
+            
 
 if __name__ == "__main__":
     # Example usage 
