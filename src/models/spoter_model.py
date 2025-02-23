@@ -39,24 +39,29 @@ class SPOTER(nn.Module):
     SPOTER (Sign POse-based TransformER) architecture for sign language recognition
     """
     def __init__(self, config: dict):
+        super().__init__()
         hidden_dim = config['model']['hidden_dim']
         num_classes = config['model'].get('num_classes', config['dataset']['num_classes'])
-        num_heads = config['model'].get('num_heads', 8)  # Default to 8 heads
+        num_heads = config['model'].get('num_heads', 9)
         num_encoder_layers = config['model'].get('num_encoder_layers', 6)
         num_decoder_layers = config['model'].get('num_decoder_layers', 6)
         dim_feedforward = config['model'].get('dim_feedforward', 2048)
         dropout = config['model'].get('dropout', 0.1)
         
-        super().__init__()
         self.hidden_dim = hidden_dim
         self.num_classes = num_classes
         
-        print(f"SPOTER model with {num_classes} classes, hidden dim {hidden_dim}, {num_heads} heads")
+        print(f"SPOTER model with {num_classes} classes and hidden dim {hidden_dim}")
         
-        # Model components
-        self.row_embed = nn.Parameter(torch.rand(50, hidden_dim))
-        self.pos = nn.Parameter(torch.cat([self.row_embed[0].unsqueeze(0).repeat(1, 1, 1)], dim=-1).flatten(0, 1).unsqueeze(0))
+        # Input projection to match hidden dimension
+        input_size = 75 * 3  # MediaPipe gives 33 pose + 42 hand landmarks, each with x,y,z
+        self.input_projection = nn.Linear(input_size, hidden_dim)
+        
+        # Positional encoding
+        self.pos_embed = nn.Parameter(torch.rand(1, 1, hidden_dim))
         self.class_query = nn.Parameter(torch.rand(1, hidden_dim))
+        
+        # Transformer
         self.transformer = nn.Transformer(
             d_model=hidden_dim,
             nhead=num_heads,
@@ -65,9 +70,11 @@ class SPOTER(nn.Module):
             dim_feedforward=dim_feedforward,
             dropout=dropout
         )
+        
+        # Classification head
         self.linear_class = nn.Linear(hidden_dim, num_classes)
-
-        # Replace decoder layers with custom ones
+        
+        # Custom decoder layers
         custom_decoder_layer = SPOTERTransformerDecoderLayer(
             self.transformer.d_model, 
             self.transformer.nhead,
@@ -75,12 +82,40 @@ class SPOTER(nn.Module):
             dropout,
             "relu"
         )
-        self.transformer.decoder.layers = _get_clones(custom_decoder_layer, self.transformer.decoder.num_layers)
+        self.transformer.decoder.layers = _get_clones(custom_decoder_layer, 
+                                                    self.transformer.decoder.num_layers)
 
     def forward(self, inputs):
-        h = torch.unsqueeze(inputs.flatten(start_dim=1), 1).float()
-        h = self.transformer(self.pos + h, self.class_query.unsqueeze(0)).transpose(0, 1)
-        return self.linear_class(h)
+        """
+        Args:
+            inputs: Tensor of shape (batch_size, seq_len, num_keypoints, 3)
+        """
+        batch_size = inputs.shape[0]
+        seq_len = inputs.shape[1]
+    
+        
+        # Flatten landmarks for each frame
+        x = inputs.reshape(batch_size, seq_len, -1)  # Shape: (batch_size, seq_len, num_keypoints*3)
+        
+        # Project to hidden dimension
+        x = self.input_projection(x)  # Shape: (batch_size, seq_len, hidden_dim)
+        
+        # Add positional encoding
+        x = x + self.pos_embed
+        
+        # Prepare for transformer: (seq_len, batch_size, hidden_dim)
+        x = x.transpose(0, 1)
+        
+        # Prepare query: (1, batch_size, hidden_dim)
+        query = self.class_query.unsqueeze(0).expand(1, batch_size, -1)
+        
+        # Pass through transformer
+        out = self.transformer(x, query)
+        
+        # Get classification output
+        out = self.linear_class(out.transpose(0, 1))
+        
+        return out.squeeze(1)  # Shape: (batch_size, num_classes)
 
     def train_model(self, config: dict):
         """Training implementatione"""
@@ -147,6 +182,11 @@ class SPOTER(nn.Module):
         for batch in pbar:
             # Get batch data
             inputs, labels = self._prepare_batch(batch)
+            inputs = inputs.squeeze(0)
+            labels = labels.squeeze(0)
+            
+            # print("inputs.shape:", inputs.shape)
+            # print("labels.shape:", labels.shape)
             
             # Forward pass
             outputs = self(inputs)

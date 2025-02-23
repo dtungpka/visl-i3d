@@ -288,18 +288,21 @@ class Visl2Dataset(IterableDataset):
                     pad = np.zeros((n_pad, self.height, self.width, X.shape[-1]), dtype=X.dtype)
                 X = np.concatenate([X, pad], axis=0)
                 
-            #label to one hot
-            label = int(label.split('P')[0][1:])-1
-            label_tensor = torch.zeros(self.num_classes)
-            label_tensor[label] = 1
-            label = label_tensor
+            # #label to one hot
+            # label = int(label.split('P')[0][1:])-1
+            # label_tensor = torch.zeros(self.num_classes)
+            # label_tensor[label] = 1
+            # label = label_tensor
+            
+            label = int(label.split('P')[0][1:]) - 1
+            label = torch.tensor(label, dtype=torch.long)
             
 
         
                 
 
-            X_tensor = torch.FloatTensor(X)
-            batch_data.append(X_tensor)
+            X = torch.FloatTensor(X).squeeze(0)  # Remove the first dimension
+            batch_data.append(X)
             batch_labels.append(label)
 
             # Yield batch when accumulated batch_size samples

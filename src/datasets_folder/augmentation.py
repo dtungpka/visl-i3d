@@ -163,7 +163,8 @@ class SkeletonAugmentation(BaseAugmentation):
         
         # Apply spatial augmentations to each frame
         augmented_frames = []
-        for skeleton in tqdm(frames, desc='Applying SA', leave=False):
+        pbar = tqdm(frames, desc='Applying SA', leave=False) if len(frames) > 100 else frames
+        for skeleton in pbar:
             aug_skeleton = self._apply_spatial(skeleton)
             augmented_frames.append(aug_skeleton)
         
@@ -282,7 +283,8 @@ class RGBDAugmentation(BaseAugmentation):
         
         # Apply spatial augmentations to each frame
         augmented_frames = []
-        for frame in tqdm(frames, desc='Applying SA', leave=False):
+        pbar = tqdm(frames, desc='Applying SA', leave=False) if len(frames) > 100 else frames
+        for frame in pbar:
             aug_frame = self._apply_spatial(frame)
             augmented_frames.append(aug_frame)
         
