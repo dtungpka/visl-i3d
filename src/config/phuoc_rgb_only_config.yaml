@@ -1,37 +1,50 @@
 
-
+device: "cuda:1"
 mode: "train"
 
 dataset:
+  name: 'RgbOnly'
   'train':
-    phase: 'train'
-    name: 'RgbOnlyDataset'
-    root_dir: '/work/21013187/SignLanguageRGBD/data/ver2_all_rgb_only'
     
-    image_size: 80
-    loader_config: 
-      batch_size: 128
+    root_dir: '/work/21013187/SignLanguageRGBD/data/ver2_all_rgb_only'
+    num_frames: 72
+    img_size: 224
+
+    dataloader_config: 
+      
+      batch_size: 5
       shuffle: true
-      # num_workers: 1
       drop_last: true
 
   'val':
-    name: 'RgbOnlyDataset'
-    phase: 'test'
-    image_size: 80
-    loader_config: 
-      batch_size: 64
-      shuffle: true
+    root_dir: '/work/21013187/SignLanguageRGBD/data/ver2_all_rgb_only'
+    num_frames: 72
+    img_size: 224
+
+    dataloader_config: 
+      batch_size: 5
+      drop_last: true
+     
+
+  'test':
+    root_dir: '/work/21013187/SignLanguageRGBD/data/ver2_all_rgb_only'
+    num_frames: 72
+    img_size: 224
+
+    dataloader_config: 
+      batch_size: 5
       drop_last: true
 
 
 model:
   model_name: "i3d"
-  num_classes: 10
+  num_classes: 200
+
+optimizer_config:
+  lr: 0.0001
+
 
 hyperparameters:
-  learning_rate: 0.001
-  batch_size: 32
-  num_epochs: 50
-  weight_decay: 0.0001
-  dropout_rate: 0.5
+  num_epochs: 100
+  # batch update = num_mini_batchs * mini_batch_size
+  num_mini_batchs: 5

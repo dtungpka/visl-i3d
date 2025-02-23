@@ -1,3 +1,7 @@
+import torch
+import random
+import numpy as np
+
 def calculate_accuracy(predictions, labels):
     correct = (predictions == labels).sum().item()
     total = labels.size(0)

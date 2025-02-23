@@ -25,11 +25,14 @@ def _load_models():
     for file in os.listdir(current_dir):
         if file.endswith('_model.py'):
             model_name = file[:-3]  # Remove .py
-            module = importlib.import_module(f'.{model_name}', package='src.models')
+            try:
+                module = importlib.import_module(f'.{model_name}', package='src.models')
+            except:
+                module = importlib.import_module(f'.{model_name}', package='models')
 
 def train_model(model: Any, config: dict):
     """Generic training function that delegates to model's train method"""
-    return model.train(config)
+    return model.train_model(config)
 
 def evaluate_model(model: Any, config: dict):
     """Generic evaluation function that delegates to model's evaluate method"""

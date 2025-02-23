@@ -1,8 +1,14 @@
 import os
 import yaml
-from src.models import ModelRegistry, train_model, evaluate_model
+import sys
 
-from src.utils import setup_logging
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.join(SCRIPT_DIR, ".."))  # Go one level up
+
+
+from models import ModelRegistry, train_model, evaluate_model
+    
+
 
 def load_config(config_path):
     with open(config_path, 'r') as file:
@@ -10,14 +16,15 @@ def load_config(config_path):
     return config
 
 def main():
-    config_path = os.path.join(os.path.dirname(__file__), 'config', 'config.yaml')
+    config_path = os.path.join(os.path.dirname(__file__), 'config', 'phuoc_rgb_only_config.yaml')
     config = load_config(config_path)
 
-    setup_logging(config.get('logging', {}))
+    # setup_logging(config.get('logging', {}))
 
     # Create model instance.
+    model_config = config['model']
     model = ModelRegistry.get_model(
-        config['model_selection'],
+        model_config['model_name'],
         num_classes=config.get('model', {}).get('num_classes', 10)
     )
 

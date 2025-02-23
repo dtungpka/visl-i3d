@@ -7,7 +7,10 @@ import torch
 from torch.utils.data import IterableDataset
 from torchvision import transforms
 from PIL import Image
-from src.datasets.augmentation import RGBDAugmentation
+try:
+    from src.datasets.augmentation import get_augmentation_pipeline
+except:
+    from datasets.augmentation import get_augmentation_pipeline
 
 import mediapipe as mp
 from mediapipe.tasks import python
@@ -41,10 +44,6 @@ class Visl2Dataset(IterableDataset):
             PoseLandmarker = mp.solutions.pose.Pose
             self.pose_landmarker = PoseLandmarker(static_image_mode=False,min_detection_confidence=0.5,min_tracking_confidence=0.5)
 
-
-
-
-        
         # Person selection configuration
         self.person_selection = config['person_selection'][mode]
         

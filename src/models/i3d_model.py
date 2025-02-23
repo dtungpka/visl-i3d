@@ -1,8 +1,23 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from . import ModelRegistry
-from src.datasets import DatasetRegistry
+import os
+import sys
+
+#import every where in the source
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.join(SCRIPT_DIR, ".."))  # Go one level up
+
+
+from models import ModelRegistry
+
+from datasets_folder import DatasetRegistry
+from models import ModelRegistry
+
+
+    
+from tqdm import tqdm
+
 
 class MaxPool3dSamePadding(nn.MaxPool3d):
     def compute_pad(self, dim, s):
@@ -48,11 +63,11 @@ class InceptionModule(nn.Module):
         self.branch1x1 = Unit3D(in_channels, out_channels[0], kernel_shape=(1, 1, 1), stride=(1, 1, 1))
         self.branch5x5 = nn.Sequential(
             Unit3D(in_channels, out_channels[1], kernel_shape=(1, 1, 1)),
-            Unit3D(out_channels[1], out_channels[2], kernel_shape=(5, 5, 5))
+            Unit3D(out_channels[1], out_channels[2], kernel_shape=(5, 5, 5),padding='same')
         )
         self.branch3x3 = nn.Sequential(
             Unit3D(in_channels, out_channels[3], kernel_shape=(1, 1, 1)),
-            Unit3D(out_channels[3], out_channels[4], kernel_shape=(3, 3, 3))
+            Unit3D(out_channels[3], out_channels[4], kernel_shape=(3, 3, 3),padding='same')
         )
         self.branch_pool = nn.Sequential(
             MaxPool3dSamePadding(kernel_size=(3, 3, 3), stride=(1, 1, 1)),
@@ -137,6 +152,7 @@ class InceptionI3d(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
+      
         """Forward pass through the network."""
         # Conv block 1
         x = self.conv3d_1a_7x7(x)
@@ -169,28 +185,83 @@ class InceptionI3d(nn.Module):
         
         return x
 
-    def train(self, config: dict):
-        """Training logic implementation."""
-        self.optimizer = torch.optim.Adam(
+    def train_model(self, config: dict):
+        
+        self.optimizer = torch.optim.AdamW(
             self.parameters(),
-            lr=config['hyperparameters']['learning_rate'],
-            weight_decay=config['hyperparameters']['weight_decay']
+            **config['optimizer_config']
         )
+        
+        self.config = config
         self.criterion = nn.CrossEntropyLoss()
+        self.device = self.config['device']
+        
+        dataset_name = config['dataset']['name']
+       
+        self.dataloader_dict = {}
+        for mode in ['train', 'val', 'test']:
+            dataset_current_config = config['dataset'][mode]
+            # add extra model infor 
+            dataset_current_config = self.preprocessing_dataset_config(dataset_current_config)
+            #add dataloader
+            self.dataloader_dict[mode] = DatasetRegistry.get_dataloader(dataset_name = dataset_name,
+                                                                  dataset_config = dataset_current_config,
+                                                                  mode=mode)
+        print(F"Training on device: {self.device}")
+        self.to(self.device)
+        self.train_loop()
+        
+    def train_loop(self):
+        
+        """Training loop implementation."""
         
         self.train()  # Set model to training mode
-        # Training loop implementation would go here
-        # You would need to implement the actual training loop using the config parameters
-
-            # Load dataset dynamically via DatasetRegistry.
-        dataset_name = config['dataset']['name']
-        dataset_config = config['dataset']['config']
+        total_epochs = self.config['hyperparameters']['num_epochs']
+        num_mini_batches = self.config['hyperparameters']['num_mini_batchs']
         
-        DatasetClass = DatasetRegistry.get_dataset(dataset_name)
-        self.dataset_train = DatasetClass(dataset_config, mode='train')
-        self.dataset_val = DatasetClass(dataset_config, mode='val')
-        self.dataset_test = DatasetClass(dataset_config, mode='test')
+        for epoch in range(total_epochs):
+            
+            for mode in ['train', 'val']:
+                
+                pbar = tqdm(enumerate(self.dataloader_dict[mode]),total = len(self.dataloader_dict[mode]))
+                pbar.set_description_str(f"{epoch}/{total_epochs}")
+                
+                if mode == 'train':
+                    
+                    current_train_loss = 0
+                    
+                    for batch_idx, data in pbar:
+                        
+                        self.fetch_data(data)
+                        self.forward_data()
+                        self.backward_data()
+                        
+                        current_train_loss += self.loss.item()
+                        
+                        #update weights after n mini batches 
+                        if (batch_idx + 1) % num_mini_batches == 0:
+                            self.optimizer_step()
+                            pbar.set_description_str(f"{epoch}/{total_epochs},Train Loss: {current_train_loss/num_mini_batches}")
+                            current_train_loss = 0
+            
+            
+                            
+                            
+    def forward_data(self):
+        self.outputs = self.forward(self.X)
+    def backward_data(self):
+        self.loss = self.criterion(self.outputs, self.label)
+        self.loss.backward()
+    def optimizer_step(self):
+        self.optimizer.step()
+        self.optimizer.zero_grad()
+    def fetch_data(self,data):
+        self.X = data['batch_rgb'].to(self.device)
+        self.label = data['batch_label'].to(self.device)
         
+    def preprocessing_dataset_config(self,config):
+        config['num_classes']  = self.config['model']['num_classes']
+        return config
     def evaluate(self, config: dict):
         """Evaluation logic implementation."""
         self.eval()  # Set model to evaluation mode
