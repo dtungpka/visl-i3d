@@ -38,24 +38,41 @@ class SPOTER(nn.Module):
     """
     SPOTER (Sign POse-based TransformER) architecture for sign language recognition
     """
-    def __init__(self, num_classes=157, hidden_dim=55):
+    def __init__(self, config: dict):
+        hidden_dim = config['model']['hidden_dim']
+        num_classes = config['model'].get('num_classes', config['dataset']['num_classes'])
+        num_heads = config['model'].get('num_heads', 8)  # Default to 8 heads
+        num_encoder_layers = config['model'].get('num_encoder_layers', 6)
+        num_decoder_layers = config['model'].get('num_decoder_layers', 6)
+        dim_feedforward = config['model'].get('dim_feedforward', 2048)
+        dropout = config['model'].get('dropout', 0.1)
+        
         super().__init__()
         self.hidden_dim = hidden_dim
         self.num_classes = num_classes
+        
+        print(f"SPOTER model with {num_classes} classes, hidden dim {hidden_dim}, {num_heads} heads")
         
         # Model components
         self.row_embed = nn.Parameter(torch.rand(50, hidden_dim))
         self.pos = nn.Parameter(torch.cat([self.row_embed[0].unsqueeze(0).repeat(1, 1, 1)], dim=-1).flatten(0, 1).unsqueeze(0))
         self.class_query = nn.Parameter(torch.rand(1, hidden_dim))
-        self.transformer = nn.Transformer(hidden_dim, 9, 6, 6)
+        self.transformer = nn.Transformer(
+            d_model=hidden_dim,
+            nhead=num_heads,
+            num_encoder_layers=num_encoder_layers,
+            num_decoder_layers=num_decoder_layers,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout
+        )
         self.linear_class = nn.Linear(hidden_dim, num_classes)
 
         # Replace decoder layers with custom ones
         custom_decoder_layer = SPOTERTransformerDecoderLayer(
             self.transformer.d_model, 
             self.transformer.nhead,
-            2048,
-            0.1,
+            dim_feedforward,
+            dropout,
             "relu"
         )
         self.transformer.decoder.layers = _get_clones(custom_decoder_layer, self.transformer.decoder.num_layers)
@@ -100,7 +117,7 @@ class SPOTER(nn.Module):
         num_epochs = config['hyperparameters']['num_epochs']
         best_val_acc = 0.0
         
-        for epoch in range(num_epochs):
+        for epoch in tqdm(range(num_epochs), desc='Training'):
             # Training phase
             self.train()
             train_loss, train_acc = self._run_epoch('train')
@@ -154,8 +171,9 @@ class SPOTER(nn.Module):
 
     def _prepare_batch(self, batch):
         """Prepare batch data for training/validation"""
-        inputs = batch['batch_rgb'].to(self.device)
-        labels = batch['batch_label'].to(self.device)
+        inputs,labels = batch
+        inputs = inputs.to(self.device)
+        labels = labels.to(self.device)
         return inputs, labels
 
     def _preprocess_dataset_config(self, config):

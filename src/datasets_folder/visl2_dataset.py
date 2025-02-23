@@ -52,6 +52,10 @@ class Visl2Dataset(IterableDataset):
         self.all_persons = sorted([d for d in os.listdir(self.dataset_path) 
                                  if os.path.isdir(os.path.join(self.dataset_path, d))])
         
+        #filter out the classes if exceed the num_classes
+        if self.num_classes is not None:
+            self.all_persons = [p for p in self.all_persons if int(p.split('P')[0][1:]) <= self.num_classes]
+        
         # Filter persons based on selection mode
         self.selected_persons = self._filter_persons()
         
@@ -75,11 +79,26 @@ class Visl2Dataset(IterableDataset):
         if mode == 'all':
             return self.all_persons
         elif mode == 'list':
-            person_list = self.person_selection['persons']
-            return [p for p in self.all_persons if p in person_list]
+            person_list = self.person_selection['persons'] #self.person_selection['persons'] should be a list of strings
+            data_list = []
+            for p in person_list:
+                data_list.extend([ _p for _p in self.all_persons if f'P{p}' in _p])
+            return data_list
         elif mode == 'index':
-            indices = self.person_selection['indices']
-            return [self.all_persons[i] for i in indices if i < len(self.all_persons)]
+            indices = self.person_selection['indices'] #self.person_selection['indices'] should be a list of integers
+            #example indices = [ [1,5],2,[7,9] ] will select persons P1,P5,P2,P7,P9
+            data_list = []
+            #all_person is a list of all persons in the dataset (AnPm) with Pm the person index
+            for i in indices:
+                if isinstance(i,list):
+                    for j in range(i[0],i[1]+1):
+                        data_list.extend([ _p for _p in self.all_persons if f'P{j}' in _p])
+                else:
+                    data_list.extend([ _p for _p in self.all_persons if f'P{i}' in _p])
+            return data_list
+            
+            
+            
         return self.all_persons
 
     def _build_file_lists(self):
@@ -216,8 +235,8 @@ class Visl2Dataset(IterableDataset):
 
                     
                     #if keypoints_to_use is defined, keep only those keypoints, otherwise keep all
-                    if config.get('keypoints_to_use', None):
-                        self.keypoints_to_use = config['keypoints_to_use']
+                    if self.config.get('keypoints_to_use', None):
+                        self.keypoints_to_use = self.config['keypoints_to_use']
                         X = X[:,self.keypoints_to_use]
                     
                     
@@ -269,9 +288,8 @@ class Visl2Dataset(IterableDataset):
                     pad = np.zeros((n_pad, self.height, self.width, X.shape[-1]), dtype=X.dtype)
                 X = np.concatenate([X, pad], axis=0)
                 
-           
             #label to one hot
-            label = int(label)
+            label = int(label.split('P')[0][1:])-1
             label_tensor = torch.zeros(self.num_classes)
             label_tensor[label] = 1
             label = label_tensor

@@ -34,6 +34,6 @@ class DatasetRegistry:
         dataset =  dataset_cls(dataset_config,mode = mode)
         
         #batch size, num_workers, ...
-        dataloder_config = dataset_config['dataloader_config']
+        #dataloder_config = {'config':dataset_config}
         
-        return DataLoader(dataset,collate_fn=dataset.collate_fn,**dataloder_config)
+        return DataLoader(dataset)
