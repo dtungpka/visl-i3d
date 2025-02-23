@@ -1,18 +1,22 @@
 mode: "train"
-
+experiment_name: "spoter_visl2"
+save_checkpoints: true
+log_freq: 1
+plot_stats: true
+plot_lr: true
 dataset:
   name: "visl2"
   height: 224
   width: 224
-  n_frames: 32
-  batch_size: 32
+  n_frames: 64
+  batch_size: 64
   num_classes: 100  
   output: "skeleton"
-  cache_folder: "/work/21010294/ViSL-2/cache/"
+  cache_folder: "/work/21010294/ViSL-2/cache_64/"
   person_selection:
     train:
       mode: "index"
-      indices: [ [6,30] ]
+      indices: [ [6,99] ]
     val:
       mode: "index"
       indices: [ [4,5] ]
@@ -26,7 +30,7 @@ dataset:
         frame_skip_range: [1, 3]
         frame_duplicate_prob: 0.2
         temporal_crop_scale: [0.8, 1.0]
-        min_frames: 32
+        min_frames: 64
       spatial:
         rotation_range: [-13, 13]
         squeeze_range: [0, 0.15]

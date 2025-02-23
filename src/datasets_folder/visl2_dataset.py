@@ -253,15 +253,6 @@ class Visl2Dataset(IterableDataset):
                     # Normalize to [-1, 1]
                     X = (X - np.min(X)) / (np.max(X) - np.min(X)) * 2.0 - 1.0
 
-                # add padding if necessary
-                if X.shape[0] < self.n_frames:
-                    n_pad = self.n_frames - X.shape[0]
-                    pad = np.zeros((n_pad, self.height, self.width, X.shape[-1]), dtype=X.dtype)
-                    X = np.concatenate([X, pad], axis=0)
-                    
-                if X.shape[0] > self.n_frames:
-                    X = X[:self.n_frames]
-                    
                 if self.cache_folder:
                         np.save(cache_file, X)
 
@@ -326,50 +317,48 @@ if __name__ == "__main__":
     # Example usage 
     config = {
         'paths': {
-            'train_data_path': "/work/21010294/ViSL-2/Processed"
+            'train_data_path': "/work/21010294/ViSL-2/Processed",
+            'val_data_path': "/work/21010294/ViSL-2/Processed", 
+            'test_data_path': "/work/21010294/ViSL-2/Processed"
         },
         'height': 224,
         'width': 224,
-        'n_frames': 32,
-        'batch_size': 16,  
+        'n_frames': 64,
+        'batch_size': 64,
+        'num_classes': 100,
         'output': 'skeleton',
-        'cache_folder': "/work/21010294/ViSL-2/cache/",
+        'cache_folder': "/work/21010294/ViSL-2/cache_64/",
         'person_selection': {
             'train': {
-                'mode': 'all'
+                'mode': 'index',
+                'indices': [[6,99]]
             },
+            'val': {
+                'mode': 'index', 
+                'indices': [[4,5]]
+            },
+            'test': {
+                'mode': 'index',
+                'indices': [[1,3]] 
+            }
         },
         'augmentation': {
             'use_augmentation': True,
             'augmentations':{
-                    'temporal': {
-                        'frame_skip_range': (1, 3),        # Skip 1-3 frames
-                        'frame_duplicate_prob': 0.2,        # 20% chance to duplicate a frame
-                        'temporal_crop_scale': (0.8, 1.0),  # Temporal crop ratio
-                        'min_frames': 32                    # Minimum frames to keep
-                    },
-                    'spatial': {
-                        # For skeleton
-                        'rotation_range': (-13, 13),
-                        'squeeze_range': (0, 0.15),
-                        'perspective_ratio_range': (0, 1),
-                        'joint_rotation_prob': 0.3,
-                        'joint_rotation_range': (-4, 4),
-                        
-                        # For RGB/RGBD
-                        'flip_h_prob': 0.5,
-                        'flip_v_prob': 0.0,
-                        'brightness_range': (-0.2, 0.2),
-                        'contrast_range': (-0.2, 0.2),
-                        'saturation_range': (-0.2, 0.2),
-                        'hue_range': (-0.1, 0.1),
-                        'spatial_crop_scale': (0.8, 1.0),
-                        'normalize': {
-                            'mean': [0.485, 0.456, 0.406],
-                            'std': [0.229, 0.224, 0.225]
-                        }
-                    }
+                'temporal': {
+                    'frame_skip_range': (1, 3),
+                    'frame_duplicate_prob': 0.2,
+                    'temporal_crop_scale': (0.8, 1.0),
+                    'min_frames': 64
+                },
+                'spatial': {
+                    'rotation_range': (-13, 13),
+                    'squeeze_range': (0, 0.15), 
+                    'perspective_ratio_range': (0, 1),
+                    'joint_rotation_prob': 0.3,
+                    'joint_rotation_range': (-4, 4)
                 }
+            }
         }
     }
     

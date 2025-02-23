@@ -334,8 +334,8 @@ class RGBDAugmentation(BaseAugmentation):
     #MARK: CZECH AUGMENTATION
     
 
-from utils_folder.body_normalization import BODY_IDENTIFIERS
-from utils_folder.hand_normalization import HAND_IDENTIFIERS
+from src.utils_folder.body_normalization import BODY_IDENTIFIERS
+from src.utils_folder.hand_normalization import HAND_IDENTIFIERS
 
 
 HAND_IDENTIFIERS = [id + "_0" for id in HAND_IDENTIFIERS] + [id + "_1" for id in HAND_IDENTIFIERS]

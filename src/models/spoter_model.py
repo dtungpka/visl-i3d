@@ -4,7 +4,9 @@ import torch.nn as nn
 import numpy as np
 from typing import Optional
 from tqdm import tqdm
-
+import os
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 from models import ModelRegistry
 from datasets_folder import DatasetRegistry
 
@@ -148,29 +150,85 @@ class SPOTER(nn.Module):
         self._train_loop(config)
 
     def _train_loop(self, config):
-        """Main training loop"""
+        """Main training loop with metric logging and plot saving."""
         num_epochs = config['hyperparameters']['num_epochs']
-        best_val_acc = 0.0
+        top_train_acc, top_val_acc = 0, 0
+        checkpoint_index = 0
+        losses, train_accs, val_accs = [], [], []
+        lr_progress = []
+        experiment_name = config.get('experiment_name', 'spoter_experiment')
         
         for epoch in tqdm(range(num_epochs), desc='Training'):
             # Training phase
             self.train()
             train_loss, train_acc = self._run_epoch('train')
+            losses.append(train_loss)
+            train_accs.append(train_acc)
             
             # Validation phase
             self.eval()
             with torch.no_grad():
                 val_loss, val_acc = self._run_epoch('val')
+            val_accs.append(val_acc)
             
-            # Print epoch statistics
+            # Log epoch statistics
             print(f"Epoch {epoch+1}/{num_epochs}")
             print(f"Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}")
             print(f"Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}")
             
-            # Save best model
-            if val_acc > best_val_acc:
-                best_val_acc = val_acc
-                torch.save(self.state_dict(), 'best_spoter.pth')
+            # Save checkpoints if enabled
+            if config.get('save_checkpoints', False):
+                # Create checkpoint directories if necessary
+                ckpt_dir = f"out-checkpoints/{experiment_name}"
+                os.makedirs(ckpt_dir, exist_ok=True)
+                if train_acc > top_train_acc:
+                    top_train_acc = train_acc
+                    torch.save(self.state_dict(), os.path.join(ckpt_dir, f"checkpoint_t_{checkpoint_index}.pth"))
+                if val_acc > top_val_acc:
+                    top_val_acc = val_acc
+                    torch.save(self.state_dict(), os.path.join(ckpt_dir, f"checkpoint_v_{checkpoint_index}.pth"))
+            
+            # Optional logging frequency from config (default 1)
+            if (epoch + 1) % config.get('log_freq', 1) == 0:
+                # You can add additional logging here if needed.
+                pass
+
+            # Reset top accuracies every 10 epochs and update checkpoint index
+            if (epoch + 1) % 10 == 0:
+                top_train_acc, top_val_acc = 0, 0
+                checkpoint_index += 1
+            
+            # Record learning rate progress
+            lr_progress.append(self.optimizer.param_groups[0]["lr"])
+        
+        # Plot and save metrics if requested
+        if config.get('plot_stats', False):
+            
+            os.makedirs("out-img", exist_ok=True)
+            fig, ax = plt.subplots()
+            ax.plot(range(1, len(losses) + 1), losses, c="#D64436", label="Training loss")
+            ax.plot(range(1, len(train_accs) + 1), train_accs, c="#00B09B", label="Training accuracy")
+            if val_accs:
+                ax.plot(range(1, len(val_accs) + 1), val_accs, c="#E0A938", label="Validation accuracy")
+            ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+            ax.set(xlabel="Epoch", ylabel="Accuracy / Loss", title="")
+            plt.legend(loc="upper center", bbox_to_anchor=(0.5, 1.05), ncol=4, fancybox=True, shadow=True, fontsize="xx-small")
+            ax.grid()
+            fig.savefig(f"out-img/{experiment_name}_loss.png")
+            plt.close(fig)
+        
+        if config.get('plot_lr', False):
+            import os
+            import matplotlib.pyplot as plt
+            os.makedirs("out-img", exist_ok=True)
+            fig1, ax1 = plt.subplots()
+            ax1.plot(range(1, len(lr_progress) + 1), lr_progress, label="LR")
+            ax1.set(xlabel="Epoch", ylabel="Learning Rate", title="")
+            ax1.grid()
+            fig1.savefig(f"out-img/{experiment_name}_lr.png")
+            plt.close(fig1)
+        
+        print("\nTraining complete. Metrics have been logged and plots saved if enabled.")
 
     def _run_epoch(self, mode):
         """Run one epoch of training or validation"""
