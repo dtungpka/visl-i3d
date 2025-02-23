@@ -7,7 +7,7 @@ import torch
 from torch.utils.data import IterableDataset
 from torchvision import transforms
 from PIL import Image
-from src.datasets.augmentation import get_augmentation_pipeline
+from src.datasets.augmentation import RGBDAugmentation
 
 import mediapipe as mp
 from mediapipe.tasks import python
@@ -60,8 +60,8 @@ class Visl2Dataset(IterableDataset):
         
         # Setup augmentation
         aug_config = config.get('augmentation', {})
-        self.augmentation = get_augmentation_pipeline(
-            aug_config.get('augmentations'), 
+        self.augmentation = RGBDAugmentation(
+            aug_config.get('augmentation'), 
             self.output
         ) if aug_config.get('use_augmentation', False) else None
 
@@ -216,49 +216,19 @@ class Visl2Dataset(IterableDataset):
                     X = X[:self.n_frames]
 
                 # Apply augmentation frame‐wise if an augmentation pipeline is defined.
-                if self.augmentation is not None and self.output in ['rgb', 'rgbd', 'skeleton']:
+                if self.augmentation is not None:
+                    # Shuffle augmentation parameters once per sequence
+                    frame_size = (self.height, self.width)
+                    self.augmentation.shuffle(frame_size)
+                    
                     augmented_frames = []
                     for j in range(X.shape[0]):
-                        if self.output == 'rgbd':
-                            # Split RGB and depth channels
-                            rgb_frame = X[j, :3]  # Shape: (H, W, 3)
-                            depth_channel = X[j, 3]  # Shape: (H, W)
-                            
-                            # Convert to uint8 for augmentation
-                            rgb_img = rgb_frame.astype(np.uint8)
-                            
-                            # Apply augmentation to RGB
-                            aug_rgb = self.augmentation(rgb_img)
-                            
-                            # Convert augmented RGB to numpy
-                            if isinstance(aug_rgb, torch.Tensor):
-                                aug_rgb = aug_rgb.permute(1, 2, 0).numpy()  # Shape: (H, W, 3)
-                            elif isinstance(aug_rgb, Image.Image):
-                                aug_rgb = np.array(aug_rgb)  # Shape: (H, W, 3)
-                            
-                            # Resize depth to match augmented RGB dimensions
-                            depth_resized = cv2.resize(depth_channel, (aug_rgb.shape[1], aug_rgb.shape[0]))  # Shape: (H, W)
-                            depth_resized = np.expand_dims(depth_resized, axis=-1)  # Shape: (H, W, 1)
-                             
-                            # Concatenate along channel dimension
-                            frame_aug = np.concatenate([aug_rgb, depth_resized], axis=-1)  # Shape: (H, W, 4)
-                        elif self.output == 'rgb':
-                            # For rgb, simply augment
-                            frame = X[j].astype(np.uint8)
-                            aug_frame = self.augmentation(frame)
-                            if isinstance(aug_frame, torch.Tensor):
-                                frame_aug = aug_frame.permute(1, 2, 0).numpy()
-                            elif isinstance(aug_frame, Image.Image):
-                                frame_aug = np.array(aug_frame)
-                        elif self.output == 'skeleton':
-                            frame = X[j].astype(np.float32)
-                            frame_aug = self.augmentation(frame)
-                            
+                        frame_aug = self.augmentation.apply(X[j])
                         augmented_frames.append(frame_aug)
-                    # Stack along time dimension
-                    X = np.stack(augmented_frames, axis=0)  # Change: Stack along time dimension first
-                    # Transpose to (C, T, H, W)
-                    X = np.transpose(X, (3, 0, 1, 2))
+                    
+                    X = np.stack(augmented_frames, axis=0)
+                    if self.output != 'skeleton':
+                        X = np.transpose(X, (3, 0, 1, 2))
                 else:
                     # Transpose X to (C, T, H, W)
                     X = np.transpose(X, (3, 0, 1, 2))
@@ -285,7 +255,7 @@ class Visl2Dataset(IterableDataset):
             yield batch_tensor, batch_labels
 
 if __name__ == "__main__":
-    # Example usage with batch processing
+    # Example usage 
     config = {
         'paths': {
             'train_data_path': "/work/21010294/ViSL-2/Processed"
@@ -293,7 +263,7 @@ if __name__ == "__main__":
         'height': 224,
         'width': 224,
         'n_frames': 320,
-        'batch_size': 16,  # Smaller batch size for testing
+        'batch_size': 16,  
         'output': 'rgbd',
         'cache_folder': "/work/21010294/ViSL-2/cache/",
         'person_selection': {
