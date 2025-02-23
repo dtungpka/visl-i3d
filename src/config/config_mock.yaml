@@ -1,0 +1,63 @@
+
+
+mode: "train"
+
+dataset: 
+  name: "visl2"
+  config:
+    height: 224
+    width: 224
+    n_frames: 320
+    batch_size: 32
+    output: "skeleton"
+    cache_folder: null
+    keypoints_to_use: [] # list of keypoints to use, if output is "skeleton"
+    person_selection:
+      'train':
+        mode: "all"  # can be "all", "list", or "index"
+        persons: []  # list of person names if mode is "list"
+        indices: []  # list of indices if mode is "index"
+      'val':
+        mode: "all"  # can be "all", "list", or "index"
+        persons: []  # list of person names if mode is "list"
+        indices: []  # list of indices if mode is "index"
+      'test':
+        mode: "all"  # can be "all", "list", or "index"
+        persons: []  # list of person names if mode is "list"
+        indices: []  # list of indices if mode is "index"
+    train_split: 0.7
+    val_split: 0.1
+    test_split: 0.2
+    seed: 42
+    augmentation:
+      use_augmentation: true
+      augmentations:
+        - type: "random_crop"
+          size: [224, 224]
+          scale: [0.8, 1.0]
+        - type: "random_flip"
+          horizontal: true
+          vertical: false
+        - type: "color_jitter"
+          brightness: 0.2
+          contrast: 0.2
+          saturation: 0.2
+          hue: 0.1
+        - type: "normalize"
+          mean: [0.485, 0.456, 0.406]
+          std: [0.229, 0.224, 0.225]
+    paths:
+      train_data_path: "path/to/train/data"
+      val_data_path: "path/to/val/data"
+      test_data_path: "path/to/test/data"
+
+
+model:
+  model_name: "i3d"
+  num_classes: 10
+hyperparameters:
+  learning_rate: 0.001
+  batch_size: 32
+  num_epochs: 50
+  weight_decay: 0.0001
+  dropout_rate: 0.5
