@@ -34,6 +34,7 @@ class Visl2Dataset(IterableDataset):
         self.batch_size = config['batch_size']
         self.output = config['output']
         self.cache_folder = config.get('cache_folder')
+        self.num_classes = config.get('num_classes', 100)
 
 
         if self.output == 'skeleton':
@@ -269,7 +270,13 @@ class Visl2Dataset(IterableDataset):
                 X = np.concatenate([X, pad], axis=0)
                 
            
+            #label to one hot
+            label = int(label)
+            label_tensor = torch.zeros(self.num_classes)
+            label_tensor[label] = 1
+            label = label_tensor
             
+
         
                 
 
