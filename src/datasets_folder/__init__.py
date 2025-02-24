@@ -1,6 +1,7 @@
 # This file initializes the datasets package, allowing for easy imports of the data loading and augmentation functionalities.
 import importlib
 from torch.utils.data import DataLoader
+from . import *
 
 class DatasetRegistry:
     _datasets = {}
@@ -16,8 +17,8 @@ class DatasetRegistry:
             return cls._datasets[key]
         else:
             
-            module_name = f"datasets_folder.{key}_dataset"
-            module = importlib.import_module(module_name)
+            module_name = f".{key}_dataset"
+            module = importlib.import_module(module_name, package="datasets_folder")
             
             # Search for a class in the module with name starting with the dataset key (case-insensitive).
             for attr in dir(module):
@@ -33,6 +34,6 @@ class DatasetRegistry:
         dataset =  dataset_cls(dataset_config,mode = mode)
         
         #batch size, num_workers, ...
-        dataloder_config = dataset_config['dataloader_config']
+        #dataloder_config = {'config':dataset_config}
         
-        return DataLoader(dataset,collate_fn=dataset.collate_fn,**dataloder_config)
+        return DataLoader(dataset)

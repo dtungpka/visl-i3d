@@ -8,9 +8,9 @@ from torch.utils.data import IterableDataset
 from torchvision import transforms
 from PIL import Image
 try:
-    from src.datasets.augmentation import get_augmentation_pipeline
+    from src.datasets_folder.augmentation import SkeletonAugmentation, RGBDAugmentation
 except:
-    from datasets.augmentation import get_augmentation_pipeline
+    from datasets_folder.augmentation import SkeletonAugmentation, RGBDAugmentation
 
 import mediapipe as mp
 from mediapipe.tasks import python
@@ -34,6 +34,7 @@ class Visl2Dataset(IterableDataset):
         self.batch_size = config['batch_size']
         self.output = config['output']
         self.cache_folder = config.get('cache_folder')
+        self.num_classes = config.get('num_classes', 100)
 
 
         if self.output == 'skeleton':
@@ -51,6 +52,10 @@ class Visl2Dataset(IterableDataset):
         self.all_persons = sorted([d for d in os.listdir(self.dataset_path) 
                                  if os.path.isdir(os.path.join(self.dataset_path, d))])
         
+        #filter out the classes if exceed the num_classes
+        if self.num_classes is not None:
+            self.all_persons = [p for p in self.all_persons if int(p.split('P')[0][1:]) <= self.num_classes]
+        
         # Filter persons based on selection mode
         self.selected_persons = self._filter_persons()
         
@@ -59,21 +64,41 @@ class Visl2Dataset(IterableDataset):
         
         # Setup augmentation
         aug_config = config.get('augmentation', {})
-        self.augmentation = get_augmentation_pipeline(
-            aug_config.get('augmentations'), 
-            self.output
-        ) if aug_config.get('use_augmentation', False) else None
+        self.augmentation = None
+        if aug_config.get('use_augmentation', False):
+            if self.output == 'skeleton':
+                self.augmentation = SkeletonAugmentation(
+                    aug_config.get('augmentations'))
+            elif self.output in ['rgb', 'rgbd', 'flow']:
+                self.augmentation = RGBDAugmentation(
+                    aug_config.get('augmentation'), 
+                    self.output,(config.get('width'),config.get('height'))) 
 
     def _filter_persons(self):
         mode = self.person_selection['mode']
         if mode == 'all':
             return self.all_persons
         elif mode == 'list':
-            person_list = self.person_selection['persons']
-            return [p for p in self.all_persons if p in person_list]
+            person_list = self.person_selection['persons'] #self.person_selection['persons'] should be a list of strings
+            data_list = []
+            for p in person_list:
+                data_list.extend([ _p for _p in self.all_persons if f'P{p}' in _p])
+            return data_list
         elif mode == 'index':
-            indices = self.person_selection['indices']
-            return [self.all_persons[i] for i in indices if i < len(self.all_persons)]
+            indices = self.person_selection['indices'] #self.person_selection['indices'] should be a list of integers
+            #example indices = [ [1,5],2,[7,9] ] will select persons P1,P5,P2,P7,P9
+            data_list = []
+            #all_person is a list of all persons in the dataset (AnPm) with Pm the person index
+            for i in indices:
+                if isinstance(i,list):
+                    for j in range(i[0],i[1]+1):
+                        data_list.extend([ _p for _p in self.all_persons if f'P{j}' in _p])
+                else:
+                    data_list.extend([ _p for _p in self.all_persons if f'P{i}' in _p])
+            return data_list
+            
+            
+            
         return self.all_persons
 
     def _build_file_lists(self):
@@ -190,14 +215,34 @@ class Visl2Dataset(IterableDataset):
                         hand_frames.append(results.multi_hand_landmarks)
                     #Convert to numpy and keep only keypoints_to_use
                     pose_frames = np.array([[[landmark.x,landmark.y,landmark.z] for landmark in frame.landmark] for frame in pose_frames])
-                    hand_frames = np.array([[[landmark.x,landmark.y,landmark.z] for landmark in hand.landmark] for hand in hand_frames])
-                    X = np.concatenate([pose_frames,hand_frames],axis=-1)
-                    X = X.reshape(X.shape[0],-1)
+                    # Process hand landmarks, accounting for both hands
+                    hand_frames_processed = []
+                    for frame_hands in hand_frames:
+                        if frame_hands is None or len(frame_hands) == 0:
+                            # If no hands detected, use zeros 
+                            frame_data = np.zeros((42, 3))  # 21 landmarks * 2 hands flattened
+                        else:
+                            # Process up to 2 hands
+                            frame_data = np.zeros((42, 3))  # 21 landmarks * 2 hands flattened
+                            for i, hand in enumerate(frame_hands[:2]):  # Only take first two hands if more are detected
+                                landmarks = np.array([[landmark.x, landmark.y, landmark.z] for landmark in hand.landmark])
+                                frame_data[i*21:(i+1)*21] = landmarks
+                        hand_frames_processed.append(frame_data)
+                    hand_frames = np.array(hand_frames_processed)
+                    X = np.concatenate([pose_frames,hand_frames],axis=1)
+                    #X = X.reshape(X.shape[0],-1)
                     X = X.astype(np.float32)
 
-                    self.keypoints_to_use = config['keypoints_to_use'] #list of indices to keep
-                    X = X[:,self.keypoints_to_use]
-                    X = X.reshape(X.shape[0],-1)
+                    
+                    #if keypoints_to_use is defined, keep only those keypoints, otherwise keep all
+                    if self.config.get('keypoints_to_use', None):
+                        self.keypoints_to_use = self.config['keypoints_to_use']
+                        X = X[:,self.keypoints_to_use]
+                    
+                    
+                    
+                    
+                    #X = X.reshape(X.shape[0],-1)
 
 
                 # For non-flow outputs, resize and normalize the frames.
@@ -208,71 +253,54 @@ class Visl2Dataset(IterableDataset):
                     # Normalize to [-1, 1]
                     X = (X - np.min(X)) / (np.max(X) - np.min(X)) * 2.0 - 1.0
 
-                # Adjust length to match desired n_frames.
-                if X.shape[0] < self.n_frames:
-                    X = np.tile(X, (self.n_frames // X.shape[0] + 1, 1, 1, 1))
-                if X.shape[0] > self.n_frames:
-                    X = X[:self.n_frames]
-
-                # Apply augmentation frame‐wise if an augmentation pipeline is defined.
-                if self.augmentation is not None and self.output in ['rgb', 'rgbd', 'skeleton']:
-                    augmented_frames = []
-                    for j in range(X.shape[0]):
-                        if self.output == 'rgbd':
-                            # Split RGB and depth channels
-                            rgb_frame = X[j, :3]  # Shape: (H, W, 3)
-                            depth_channel = X[j, 3]  # Shape: (H, W)
-                            
-                            # Convert to uint8 for augmentation
-                            rgb_img = rgb_frame.astype(np.uint8)
-                            
-                            # Apply augmentation to RGB
-                            aug_rgb = self.augmentation(rgb_img)
-                            
-                            # Convert augmented RGB to numpy
-                            if isinstance(aug_rgb, torch.Tensor):
-                                aug_rgb = aug_rgb.permute(1, 2, 0).numpy()  # Shape: (H, W, 3)
-                            elif isinstance(aug_rgb, Image.Image):
-                                aug_rgb = np.array(aug_rgb)  # Shape: (H, W, 3)
-                            
-                            # Resize depth to match augmented RGB dimensions
-                            depth_resized = cv2.resize(depth_channel, (aug_rgb.shape[1], aug_rgb.shape[0]))  # Shape: (H, W)
-                            depth_resized = np.expand_dims(depth_resized, axis=-1)  # Shape: (H, W, 1)
-                             
-                            # Concatenate along channel dimension
-                            frame_aug = np.concatenate([aug_rgb, depth_resized], axis=-1)  # Shape: (H, W, 4)
-                        elif self.output == 'rgb':
-                            # For rgb, simply augment
-                            frame = X[j].astype(np.uint8)
-                            aug_frame = self.augmentation(frame)
-                            if isinstance(aug_frame, torch.Tensor):
-                                frame_aug = aug_frame.permute(1, 2, 0).numpy()
-                            elif isinstance(aug_frame, Image.Image):
-                                frame_aug = np.array(aug_frame)
-                        elif self.output == 'skeleton':
-                            frame = X[j].astype(np.float32)
-                            frame_aug = self.augmentation(frame)
-                            
-                        augmented_frames.append(frame_aug)
-                    # Stack along time dimension
-                    X = np.stack(augmented_frames, axis=0)  # Change: Stack along time dimension first
-                    # Transpose to (C, T, H, W)
-                    X = np.transpose(X, (3, 0, 1, 2))
-                else:
-                    # Transpose X to (C, T, H, W)
-                    X = np.transpose(X, (3, 0, 1, 2))
-
                 if self.cache_folder:
-                    np.save(cache_file, X)
+                        np.save(cache_file, X)
 
-            X_tensor = torch.FloatTensor(X)
-            batch_data.append(X_tensor)
+            # Apply augmentation if an augmentation pipeline is defined
+            if self.augmentation is not None:
+                # Shuffle augmentation parameters once per sequence
+                frame_size = (self.height, self.width)
+                self.augmentation.shuffle(frame_size)
+                
+                # Apply augmentations to all frames at once
+                X = self.augmentation.apply(X)
+                
+            if self.output != 'skeleton':
+                X = np.transpose(X, (3, 0, 1, 2))
+            #re-check the shape if the time is the same
+            
+            if X.shape[0] > self.n_frames:
+                X = X[:self.n_frames]
+            elif X.shape[0] < self.n_frames:
+                n_pad = self.n_frames - X.shape[0]
+                if self.output == 'skeleton':
+                    pad = np.zeros((n_pad, X.shape[1], X.shape[2]), dtype=X.dtype)
+                else:
+                    pad = np.zeros((n_pad, self.height, self.width, X.shape[-1]), dtype=X.dtype)
+                X = np.concatenate([X, pad], axis=0)
+                
+            # #label to one hot
+            # label = int(label.split('P')[0][1:])-1
+            # label_tensor = torch.zeros(self.num_classes)
+            # label_tensor[label] = 1
+            # label = label_tensor
+            
+            label = int(label.split('P')[0][1:]) - 1
+            label = torch.tensor(label, dtype=torch.long)
+            
+
+        
+                
+
+            X = torch.FloatTensor(X).squeeze(0)  # Remove the first dimension
+            batch_data.append(X)
             batch_labels.append(label)
 
             # Yield batch when accumulated batch_size samples
             if len(batch_data) == self.batch_size:
                 # Stack tensors along batch dimension
                 batch_tensor = torch.stack(batch_data, dim=0)
+                batch_labels = torch.stack(batch_labels, dim=0)
                 yield batch_tensor, batch_labels
                 # Clear accumulators
                 batch_data = []
@@ -281,37 +309,56 @@ class Visl2Dataset(IterableDataset):
         # Yield remaining samples if any
         if batch_data:
             batch_tensor = torch.stack(batch_data, dim=0)
+            batch_labels = torch.stack(batch_labels, dim=0)
             yield batch_tensor, batch_labels
+            
 
 if __name__ == "__main__":
-    # Example usage with batch processing
+    # Example usage 
     config = {
         'paths': {
-            'train_data_path': "/work/21010294/ViSL-2/Processed"
+            'train_data_path': "/work/21010294/ViSL-2/Processed",
+            'val_data_path': "/work/21010294/ViSL-2/Processed", 
+            'test_data_path': "/work/21010294/ViSL-2/Processed"
         },
         'height': 224,
         'width': 224,
-        'n_frames': 320,
-        'batch_size': 16,  # Smaller batch size for testing
-        'output': 'rgbd',
-        'cache_folder': "/work/21010294/ViSL-2/cache/",
+        'n_frames': 64,
+        'batch_size': 64,
+        'num_classes': 100,
+        'output': 'skeleton',
+        'cache_folder': "/work/21010294/ViSL-2/cache_64/",
         'person_selection': {
-            'mode': 'all'
+            'train': {
+                'mode': 'index',
+                'indices': [[6,99]]
+            },
+            'val': {
+                'mode': 'index', 
+                'indices': [[4,5]]
+            },
+            'test': {
+                'mode': 'index',
+                'indices': [[1,3]] 
+            }
         },
         'augmentation': {
             'use_augmentation': True,
-            'augmentations': [
-                {
-                    'type': 'random_crop',
-                    'size': [224, 224],
-                    'scale': [0.8, 1.0]
+            'augmentations':{
+                'temporal': {
+                    'frame_skip_range': (1, 3),
+                    'frame_duplicate_prob': 0.2,
+                    'temporal_crop_scale': (0.8, 1.0),
+                    'min_frames': 64
                 },
-                {
-                    'type': 'random_flip',
-                    'horizontal': True,
-                    'vertical': False
+                'spatial': {
+                    'rotation_range': (-13, 13),
+                    'squeeze_range': (0, 0.15), 
+                    'perspective_ratio_range': (0, 1),
+                    'joint_rotation_prob': 0.3,
+                    'joint_rotation_range': (-4, 4)
                 }
-            ]
+            }
         }
     }
     

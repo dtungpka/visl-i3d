@@ -9,19 +9,19 @@ dataset:
     width: 224
     n_frames: 320
     batch_size: 32
-    output: "rgb"
+    output: "skeleton"
     cache_folder: null
     keypoints_to_use: [] # list of keypoints to use, if output is "skeleton"
     person_selection:
-      train:
+      'train':
         mode: "all"  # can be "all", "list", or "index"
         persons: []  # list of person names if mode is "list"
         indices: []  # list of indices if mode is "index"
-      val:
+      'val':
         mode: "all"  # can be "all", "list", or "index"
         persons: []  # list of person names if mode is "list"
         indices: []  # list of indices if mode is "index"
-      test:
+      'test':
         mode: "all"  # can be "all", "list", or "index"
         persons: []  # list of person names if mode is "list"
         indices: []  # list of indices if mode is "index"
