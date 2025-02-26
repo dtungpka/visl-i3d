@@ -214,7 +214,14 @@ class Visl2Dataset(IterableDataset):
                         results = self.hand_landmarker.process(frame)
                         hand_frames.append(results.multi_hand_landmarks)
                     #Convert to numpy and keep only keypoints_to_use
-                    pose_frames = np.array([[[landmark.x,landmark.y,landmark.z] for landmark in frame.landmark] for frame in pose_frames])
+                    try:
+                        pose_frames = np.array([[[landmark.x,landmark.y,landmark.z] for landmark in frame.landmark] for frame in pose_frames])
+                    except:
+                        print(f"Error in pose landmarks for {rgb_fp}") 
+                        pose_frames = None
+                    if pose_frames is None:
+                        pose_frames = np.zeros((len(X),33,3))
+                    
                     # Process hand landmarks, accounting for both hands
                     hand_frames_processed = []
                     for frame_hands in hand_frames:

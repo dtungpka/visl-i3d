@@ -15,6 +15,7 @@ dataset:
       batch_size: 5
       shuffle: true
       drop_last: true
+      
 
   'val':
     root_dir: '/work/21013187/SignLanguageRGBD/data/ver2_all_rgb_only'
