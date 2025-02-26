@@ -1,15 +1,15 @@
 mode: "train"
-experiment_name: "spoter_visl2"
+experiment_name: "spoter_experiment"
 save_checkpoints: true
 log_freq: 1
 plot_stats: true
 plot_lr: true
 dataset:
-  name: "visl2"
+  name: "sign_dataset"
   height: 224
   width: 224
   n_frames: 64
-  batch_size: 64
+  batch_size: 32
   num_classes: 100  
   output: "skeleton"
   cache_folder: "/work/21010294/ViSL-2/cache_64/"
@@ -44,7 +44,7 @@ dataset:
 
 model:
   model_name: "spoter"
-  hidden_dim: 256  # Must be divisible by num_heads
+  hidden_dim: 512  # Must be divisible by num_heads
   num_heads: 8
   num_encoder_layers: 6
   num_decoder_layers: 6
@@ -52,10 +52,12 @@ model:
   dropout: 0.1
 
 hyperparameters:
-  learning_rate: 0.001
+  optimizer: adam
+  learning_rate: 0.0001
   weight_decay: 0.0001
-  num_epochs: 100
+  num_epochs: 50
   batch_size: 32
   dropout_rate: 0.5
+  loss: cross_entropy
 
 device: "cuda"

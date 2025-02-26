@@ -10,7 +10,7 @@ sys.path.append(os.path.join(SCRIPT_DIR, ".."))  # Go one level up
 
 
 from models import ModelRegistry
-from datasets_folder import DatasetRegistry
+from datasets import DatasetRegistry
 from tqdm import tqdm
 
 

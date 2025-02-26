@@ -12,10 +12,10 @@ import sys
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 
-from utils_folder.load_data import load_video
-from utils_folder.time_augumentation import AdjustNFrames
-from utils_folder.spatial_transforms import Resize
-from utils_folder import ToTensor,OneHotConvert
+from utils.load_data import load_video
+from utils.time_augumentation import AdjustNFrames
+from utils.spatial_transforms import Resize
+from utils import ToTensor,OneHotConvert
 
 #batch input 
 def collate_fn(batch):

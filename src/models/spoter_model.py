@@ -8,7 +8,7 @@ import os
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from models import ModelRegistry
-from datasets_folder import DatasetRegistry
+from datasets import DatasetRegistry
 
 def _get_clones(mod, n):
     return nn.ModuleList([copy.deepcopy(mod) for _ in range(n)])

@@ -334,8 +334,8 @@ class RGBDAugmentation(BaseAugmentation):
     #MARK: CZECH AUGMENTATION
     
 
-from src.utils_folder.body_normalization import BODY_IDENTIFIERS
-from src.utils_folder.hand_normalization import HAND_IDENTIFIERS
+from src.utils.body_normalization import BODY_IDENTIFIERS
+from src.utils.hand_normalization import HAND_IDENTIFIERS
 
 
 HAND_IDENTIFIERS = [id + "_0" for id in HAND_IDENTIFIERS] + [id + "_1" for id in HAND_IDENTIFIERS]
@@ -513,7 +513,9 @@ def augment_shear(sign: dict, type: str, squeeze_ratio: tuple) -> dict:
 
 def augment_arm_joint_rotate(sign: dict, probability: float, angle_range: tuple) -> dict:
     """
-    AUGMENTATION TECHNIQUE. The joint coordinates of both arms are passed successively, and the impending landmark is
+    ## AUGMENTATION TECHNIQUE. 
+    
+    The joint coordinates of both arms are passed successively, and the impending landmark is
     slightly rotated with respect to the current one. The chance of each joint to be rotated is 3:10 and the angle of
     alternation is a uniform random angle up to +-4 degrees. This simulates slight, negligible variances in each
     execution of a sign, which do not change its semantic meaning.
