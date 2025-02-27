@@ -12,7 +12,7 @@ dataset:
   batch_size: 32
   num_classes: 100  
   output: "skeleton"
-  cache_folder: "/work/21010294/ViSL-2/cache_64_debug/"
+  cache_folder: "/work/21010294/ViSL-2/cache_64/"
   person_selection:
     train:
       mode: "index"

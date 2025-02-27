@@ -10,7 +10,7 @@
 #SBATCH --mail-user=21010294@st.phenikaa-uni.edu.vn
 #SBATCH --output=logs/%x_%j_%D.out
 #SBATCH --error=logs/%x_%j_%D.err
-#SBATCH --nodelist=hpc21
+#SBATCH --nodelist=hpc23
 
 module purge
 module load cuda
