@@ -24,11 +24,18 @@ def setup_dataloaders(config):
     print(f"Available datasets: {DatasetRegistry.list_datasets()}")
     print(f"Setting up dataloaders for dataset: {dataset_name}")
     
+    # Set reasonable worker count based on the system
+    num_workers = config['dataset'].get('num_workers', 4)
+    config['dataset']['num_workers'] = num_workers
+    
     for mode in ['train', 'val', 'test']:
         # Create a copy of the dataset config
         dataset_config = config['dataset'].copy()
-        dataset_config['mode'] = mode
         
+        # Use fewer workers for validation and test to prevent memory issues
+        if mode != 'train':
+            dataset_config['num_workers'] = min(2, num_workers)
+            
         try:
             dataloader = DatasetRegistry.get_dataloader(
                 dataset_name=dataset_name,
@@ -39,6 +46,8 @@ def setup_dataloaders(config):
             print(f"Successfully created {mode} dataloader")
         except Exception as e:
             print(f"Error creating {mode} dataloader: {str(e)}")
+            if mode == 'train':
+                raise  # Only re-raise for train mode since it's required
     
     if 'train' not in dataloader_dict:
         raise ValueError("No training dataloader was created. Check dataset configuration.")
