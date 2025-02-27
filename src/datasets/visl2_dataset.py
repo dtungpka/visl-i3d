@@ -4,10 +4,22 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 from PIL import Image
+
+# Use absolute imports when possible, with clear fallback
+import sys
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.append(parent_dir)
+
 try:
     from src.datasets.augmentation import SkeletonAugmentation, RGBDAugmentation
-except:
-    from datasets.augmentation import SkeletonAugmentation, RGBDAugmentation
+except ImportError:
+    try:
+        from datasets.augmentation import SkeletonAugmentation, RGBDAugmentation
+    except ImportError:
+        # Last resort, try relative import
+        from .augmentation import SkeletonAugmentation, RGBDAugmentation
 
 import mediapipe as mp
 from mediapipe.tasks import python
@@ -273,6 +285,45 @@ class Visl2Dataset(Dataset):
             'label': label_tensor
         }
 
+    # Add this as a method to the Visl2Dataset class
+    def collate_fn(self, batch):
+        """
+        Custom collate function for Visl2Dataset.
+        Expects each sample to be a dict with 'data' and 'label' keys.
+        """
+        if not batch:
+            return None
+            
+        # Extract data and labels
+        batch_data = [item['data'] for item in batch]
+        batch_labels = [item['label'] for item in batch]
+            
+        # Stack tensors along batch dimension
+        batch_tensor = torch.stack(batch_data, dim=0)
+        batch_labels = torch.stack(batch_labels, dim=0)
+            
+        return batch_tensor, batch_labels
+
+# Register the dataset directly - this ensures it's available regardless of import method
+if __name__ != "__main__": 
+    # When imported as a module
+    try:
+        # Try to import DatasetRegistry - handle both cases
+        try:
+            from src.datasets import DatasetRegistry
+        except ImportError:
+            try:
+                from datasets import DatasetRegistry
+            except ImportError:
+                # Last resort, assume it's in the same package
+                from . import DatasetRegistry
+                
+        # Register the dataset
+        DatasetRegistry.register('sign_dataset', Visl2Dataset)
+        print("Registered Visl2Dataset as 'sign_dataset'")
+    except ImportError as e:
+        print(f"Error registering Visl2Dataset: {e}")
+
 if __name__ == "__main__":
     # Example usage 
     config = {
@@ -323,7 +374,17 @@ if __name__ == "__main__":
     }
     
     from torch.utils.data import DataLoader
-    from datasets import DatasetRegistry
+    
+    # Import and register the dataset when running as script
+    try:
+        from src.datasets import DatasetRegistry
+    except ImportError:
+        try:
+            from datasets import DatasetRegistry
+        except ImportError:
+            import sys
+            sys.path.append(os.path.dirname(os.path.dirname(current_dir)))
+            from src.datasets import DatasetRegistry
     
     # Test dataset
     visl2_dataset = Visl2Dataset(config, mode='train')
@@ -334,13 +395,13 @@ if __name__ == "__main__":
     print(f"Sample data shape: {sample['data'].shape}")
     print(f"Sample label: {sample['label']}")
     
-    # Test with DataLoader using DatasetRegistry's collate_fn
+    # Test with DataLoader using dataset's own collate_fn
     dataloader = DataLoader(
         visl2_dataset, 
         batch_size=config['batch_size'],
         shuffle=True,
         num_workers=2,
-        collate_fn=DatasetRegistry.default_collate_fn
+        collate_fn=visl2_dataset.collate_fn  # Use dataset's own method instead
     )
     
     for batch_data, batch_labels in dataloader:
@@ -349,4 +410,5 @@ if __name__ == "__main__":
         print("Number of samples in batch:", len(batch_labels))
         break
 
-DatasetRegistry.register('visl2', Visl2Dataset)
+    # Also register here when running as script
+    DatasetRegistry.register('visl2_dataset', Visl2Dataset)

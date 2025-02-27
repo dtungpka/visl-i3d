@@ -1,8 +1,7 @@
 import os
-import importlib
-import torch
-from typing import Dict, Any, List
-from torch.utils.data import DataLoader
+import importlib.util
+from typing import Dict, Any
+from torch.utils.data import DataLoader, IterableDataset
 
 class DatasetRegistry:
     _datasets: Dict[str, Any] = {}
@@ -10,11 +9,12 @@ class DatasetRegistry:
     @classmethod
     def register(cls, name: str, dataset_class: Any) -> None:
         cls._datasets[name] = dataset_class
+        print(f"Registered dataset: {name}")
 
     @classmethod
     def get_dataset(cls, dataset_name: str, dataset_config: dict, mode: str) -> Any:
         if dataset_name not in cls._datasets:
-            raise ValueError(f"Dataset {dataset_name} not found in registry")
+            raise ValueError(f"Dataset {dataset_name} not found in registry. Available datasets: {cls.list_datasets()}")
         return cls._datasets[dataset_name](config=dataset_config, mode=mode)
 
     @classmethod
@@ -26,14 +26,17 @@ class DatasetRegistry:
         num_workers = dataset_config.get('num_workers', 4)
         shuffle = mode == 'train' and dataset_config.get('shuffle', True)
         
-        # Check if the dataset is iterable (no need for shuffle or sampler)
-        from torch.utils.data import IterableDataset
+        # Use dataset's collate_fn if available, otherwise use default
+        collate_fn = getattr(dataset, 'collate_fn', None)
+        
+        # Check if the dataset is iterable
         if isinstance(dataset, IterableDataset):
             return DataLoader(
                 dataset,
-                batch_size=None,  # Batch size is handled in the dataset for IterableDataset
+                batch_size=None,
                 num_workers=num_workers,
-                pin_memory=True
+                pin_memory=True,
+                collate_fn=collate_fn
             )
         else:
             # Regular map-style dataset
@@ -43,55 +46,46 @@ class DatasetRegistry:
                 shuffle=shuffle,
                 num_workers=num_workers,
                 pin_memory=True,
-                collate_fn=cls.default_collate_fn
+                collate_fn=collate_fn
             )
-
-    @staticmethod
-    def default_collate_fn(batch: List[dict]) -> tuple:
-        """
-        Default collate function that handles dictionary-based dataset outputs.
-        
-        Args:
-            batch: List of dictionaries, each with 'data' and 'label' keys
-            
-        Returns:
-            Tuple of (batched_data, batched_labels)
-        """
-        if not batch:
-            return None
-            
-        # Check if batch contains dictionaries with expected keys
-        if isinstance(batch[0], dict) and 'data' in batch[0] and 'label' in batch[0]:
-            # Extract data and labels
-            batch_data = [item['data'] for item in batch]
-            batch_labels = [item['label'] for item in batch]
-            
-            # Stack tensors along batch dimension
-            batch_tensor = torch.stack(batch_data, dim=0)
-            batch_labels = torch.stack(batch_labels, dim=0)
-            
-            return batch_tensor, batch_labels
-        else:
-            # Fallback to default behavior
-            return torch.utils.data.default_collate(batch)
 
     @classmethod
     def list_datasets(cls) -> list:
         return list(cls._datasets.keys())
 
 def _load_datasets():
-    """Dynamically load all dataset files in the datasets directory"""
-    current_dir = os.path.dirname(__file__)
+    """
+    Dynamically load all dataset files in the datasets directory using spec-based imports
+    which are more reliable than module-based imports across different Python environments.
+    """
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
     for file in os.listdir(current_dir):
         if file.endswith('_dataset.py'):
-            dataset_name = file[:-3]  # Remove .py
+            dataset_name = file[:-3]  # Remove .py extension
+            module_path = os.path.join(current_dir, file)
+            
             try:
-                module = importlib.import_module(f'.{dataset_name}', package='src.datasets_folder')
-            except ImportError:
-                try:
-                    module = importlib.import_module(f'.{dataset_name}', package='datasets_folder')
-                except ImportError:
-                    print(f"Could not import dataset module {dataset_name}")
+                # Use spec-based import which is more reliable for local files
+                spec = importlib.util.spec_from_file_location(dataset_name, module_path)
+                if spec is None:
+                    print(f"Could not create spec for {dataset_name}")
+                    continue
+                    
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                print(f"Successfully imported {dataset_name}")
+                
+                # The dataset class should register itself in its own file
+                # If not, we can try to detect and register it here
+                if hasattr(module, dataset_name[:-8].capitalize() + "Dataset"):  # e.g. "visl2" from "visl2_dataset"
+                    dataset_class = getattr(module, dataset_name[:-8].capitalize() + "Dataset")
+                    # Only register if not already registered
+                    if dataset_name[:-8] not in DatasetRegistry._datasets:
+                        DatasetRegistry.register(dataset_name[:-8], dataset_class)
+                    
+            except Exception as e:
+                print(f"Error importing {dataset_name}: {e}")
 
 # Load all datasets when the package is imported
 _load_datasets()

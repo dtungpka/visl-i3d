@@ -21,17 +21,27 @@ def setup_dataloaders(config):
     dataset_name = config['dataset']['name']
     dataloader_dict = {}
     
+    print(f"Available datasets: {DatasetRegistry.list_datasets()}")
+    print(f"Setting up dataloaders for dataset: {dataset_name}")
+    
     for mode in ['train', 'val', 'test']:
+        # Create a copy of the dataset config
         dataset_config = config['dataset'].copy()
         dataset_config['mode'] = mode
         
-        # Only create dataloaders for modes that are configured or required
-        if mode in config['dataset']['paths']:
-            dataloader_dict[mode] = DatasetRegistry.get_dataloader(
+        try:
+            dataloader = DatasetRegistry.get_dataloader(
                 dataset_name=dataset_name,
                 dataset_config=dataset_config,
                 mode=mode
             )
+            dataloader_dict[mode] = dataloader
+            print(f"Successfully created {mode} dataloader")
+        except Exception as e:
+            print(f"Error creating {mode} dataloader: {str(e)}")
+    
+    if 'train' not in dataloader_dict:
+        raise ValueError("No training dataloader was created. Check dataset configuration.")
     
     return dataloader_dict
 
